@@ -52,10 +52,18 @@ interface DealInput {
 interface DealResult {
   mortgage: number; effectiveRent: number; opEx: number; totalMonthly: number;
   cashflow: number; annualCashflow: number; coc: number; capRate: number;
-  dscr: number; score: number; label: "Great Deal" | "Average" | "Risky"; reason: string;
+  dscr: number;
+  // scoring
+  baseScore: number;       // raw financial score (pre-state)
+  stateAdj: number;        // state adjustment (–8 to +8)
+  stateAdjLabel: string;   // e.g. "Texas taxes & insurance risk"
+  score: number;           // final clamped score
+  label: "Great Deal" | "Average" | "Risky";
+  reason: string;
 }
 interface AnalysisResult {
   r: DealResult; d: DealInput; rentMissing: boolean;
+  stateAbbr?: string;      // forwarded so UI can show state name
 }
 interface SavedDeal extends DealInput, DealResult { id: number; saved: boolean; savedAt?: string; userEmail?: string; }
 
@@ -67,8 +75,91 @@ type AppMode = "buyer" | "investor";
 
 interface AuthUser { email: string; name: string; loginAt?: string; }
 
+// ─── State investment scoring data ───────────────────────────────────────────
+// Each dimension is scored –2 (very bad) to +2 (very good) for investor.
+// Final state modifier = weighted sum, clamped to –8 … +8 points.
+interface StateScoreFactors {
+  tax: number;        // property tax burden: –2 = very high, +2 = very low
+  insurance: number;  // insurance risk/cost: –2 = very high, +2 = very low
+  landlord: number;   // landlord-friendliness: –2 = tenant, +2 = landlord
+  climate: number;    // climate/disaster risk: –2 = severe, +2 = minimal
+  demand: number;     // rental demand / investor market: –2 = weak, +2 = strong
+  label: string;      // short explanation shown in UI
+}
+
+const STATE_SCORE_FACTORS: Record<string, StateScoreFactors> = {
+  AL: { tax: 2, insurance: 0, landlord: 2, climate: -1, demand: 0,  label: "low taxes, landlord-friendly" },
+  AK: { tax: 0, insurance: -1, landlord: 0, climate: -1, demand: -1, label: "remote market, high costs" },
+  AZ: { tax: 1, insurance: 1, landlord: 2, climate: -1, demand: 2,  label: "landlord-friendly, strong demand" },
+  AR: { tax: 1, insurance: 0, landlord: 2, climate: -1, demand: 0,  label: "low costs, landlord-friendly" },
+  CA: { tax: 1, insurance: -2, landlord: -2, climate: -2, demand: 1, label: "tenant laws, insurance, wildfire risk" },
+  CO: { tax: 1, insurance: -1, landlord: 0, climate: -1, demand: 1,  label: "balanced, rising costs" },
+  CT: { tax: -2, insurance: 0, landlord: -1, climate: 0, demand: 0,  label: "high property taxes" },
+  DE: { tax: 1, insurance: 0, landlord: 0, climate: 0, demand: 1,   label: "low taxes, mid-Atlantic demand" },
+  FL: { tax: 0, insurance: -2, landlord: 2, climate: -2, demand: 2,  label: "hurricane & insurance risk, strong demand" },
+  GA: { tax: 0, insurance: 0, landlord: 2, climate: -1, demand: 2,  label: "landlord-friendly, growing market" },
+  HI: { tax: 2, insurance: -1, landlord: -2, climate: -1, demand: 0, label: "high prices, tenant laws" },
+  ID: { tax: 1, insurance: 1, landlord: 2, climate: 0, demand: 1,   label: "landlord-friendly, low risk" },
+  IL: { tax: -2, insurance: 0, landlord: -1, climate: -1, demand: 0, label: "very high property taxes" },
+  IN: { tax: 0, insurance: 0, landlord: 2, climate: 0, demand: 1,   label: "very landlord-friendly, Midwest value" },
+  IA: { tax: -1, insurance: -1, landlord: 0, climate: -1, demand: 0, label: "above-avg taxes, tornado risk" },
+  KS: { tax: -1, insurance: -1, landlord: 1, climate: -2, demand: 0, label: "tornado risk, above-avg taxes" },
+  KY: { tax: 0, insurance: 1, landlord: 2, climate: 0, demand: 0,   label: "landlord-friendly, low costs" },
+  LA: { tax: 1, insurance: -2, landlord: 0, climate: -2, demand: 0,  label: "hurricane & flood risk, high insurance" },
+  ME: { tax: -1, insurance: 0, landlord: -1, climate: 0, demand: 0,  label: "high taxes, thin market" },
+  MD: { tax: -1, insurance: 0, landlord: -1, climate: 0, demand: 1,  label: "high taxes, tenant-leaning" },
+  MA: { tax: -1, insurance: 0, landlord: -2, climate: 0, demand: 1,  label: "tenant laws, high taxes" },
+  MI: { tax: -2, insurance: 0, landlord: 0, climate: 0, demand: 0,   label: "high property taxes" },
+  MN: { tax: 0, insurance: 0, landlord: 0, climate: -1, demand: 0,  label: "balanced, cold climate" },
+  MS: { tax: 1, insurance: -1, landlord: 2, climate: -1, demand: -1, label: "low taxes, landlord-friendly, thin market" },
+  MO: { tax: 0, insurance: -1, landlord: 2, climate: -1, demand: 0,  label: "landlord-friendly, tornado risk" },
+  MT: { tax: 0, insurance: -1, landlord: 0, climate: -1, demand: 0,  label: "wildfire risk, remote market" },
+  NE: { tax: -2, insurance: -1, landlord: 1, climate: -1, demand: 0, label: "high taxes, tornado risk" },
+  NV: { tax: 1, insurance: 1, landlord: 2, climate: 0, demand: 1,   label: "landlord-friendly, no income tax" },
+  NH: { tax: -2, insurance: 0, landlord: 0, climate: 0, demand: 0,  label: "very high property taxes" },
+  NJ: { tax: -2, insurance: -1, landlord: -2, climate: -1, demand: 1, label: "highest taxes, tenant laws, flood risk" },
+  NM: { tax: 1, insurance: 1, landlord: 0, climate: 0, demand: 0,   label: "low taxes, low risk" },
+  NY: { tax: -2, insurance: -1, landlord: -2, climate: -1, demand: 1, label: "high taxes, very tenant-friendly" },
+  NC: { tax: 0, insurance: -1, landlord: 2, climate: -1, demand: 2,  label: "landlord-friendly, hurricane coastal risk" },
+  ND: { tax: 0, insurance: 0, landlord: 1, climate: -1, demand: 0,  label: "stable market, cold climate" },
+  OH: { tax: -1, insurance: 0, landlord: 2, climate: 0, demand: 1,  label: "landlord-friendly, high taxes" },
+  OK: { tax: 0, insurance: -1, landlord: 2, climate: -2, demand: 0,  label: "landlord-friendly, tornado risk" },
+  OR: { tax: 0, insurance: -1, landlord: -2, climate: -1, demand: 0,  label: "tenant laws, wildfire risk" },
+  PA: { tax: -1, insurance: 0, landlord: 0, climate: 0, demand: 1,  label: "high taxes, balanced laws" },
+  RI: { tax: -2, insurance: -1, landlord: -1, climate: -1, demand: 0, label: "high taxes, tenant-leaning" },
+  SC: { tax: 1, insurance: -1, landlord: 2, climate: -1, demand: 2,  label: "landlord-friendly, strong SE growth" },
+  SD: { tax: 0, insurance: 0, landlord: 2, climate: -1, demand: 0,  label: "no income tax, landlord-friendly" },
+  TN: { tax: 1, insurance: 0, landlord: 2, climate: -1, demand: 2,  label: "no income tax, landlord-friendly, growing" },
+  TX: { tax: -2, insurance: -1, landlord: 2, climate: -1, demand: 2, label: "high taxes, landlord-friendly, strong demand" },
+  UT: { tax: 1, insurance: 1, landlord: 2, climate: 0, demand: 1,   label: "landlord-friendly, low risk" },
+  VT: { tax: -2, insurance: 0, landlord: -1, climate: 0, demand: -1, label: "highest taxes, thin market" },
+  VA: { tax: 0, insurance: 0, landlord: 0, climate: 0, demand: 1,   label: "balanced, DC corridor demand" },
+  WA: { tax: 0, insurance: -1, landlord: -1, climate: -1, demand: 1,  label: "tenant-leaning, wildfire/earthquake risk" },
+  WV: { tax: 1, insurance: 0, landlord: 2, climate: -1, demand: -1,  label: "landlord-friendly, very thin market" },
+  WI: { tax: -2, insurance: 0, landlord: 0, climate: 0, demand: 0,  label: "high property taxes" },
+  WY: { tax: 1, insurance: 0, landlord: 2, climate: -1, demand: -1,  label: "no income tax, landlord-friendly, thin market" },
+};
+
+// Weights for each factor (must sum to ~1.0 for normalization)
+const STATE_SCORE_WEIGHTS = { tax: 0.30, insurance: 0.20, landlord: 0.25, climate: 0.15, demand: 0.10 };
+
+// Returns a modifier in range –8 to +8 (integer)
+function calcStateAdj(stateAbbr: string): { adj: number; label: string } {
+  const s = STATE_SCORE_FACTORS[stateAbbr];
+  if (!s) return { adj: 0, label: "" };
+  const raw =
+    s.tax      * STATE_SCORE_WEIGHTS.tax +
+    s.insurance * STATE_SCORE_WEIGHTS.insurance +
+    s.landlord  * STATE_SCORE_WEIGHTS.landlord +
+    s.climate   * STATE_SCORE_WEIGHTS.climate +
+    s.demand    * STATE_SCORE_WEIGHTS.demand;
+  // raw is in range –2 to +2; scale to –8 to +8
+  const adj = Math.round(raw * 4);
+  return { adj: Math.max(-8, Math.min(8, adj)), label: s.label };
+}
+
 // ─── Calculations ─────────────────────────────────────────────────────────────
-function calcDeal(d: DealInput): DealResult {
+function calcDeal(d: DealInput, stateAbbr = ""): DealResult {
   const loan = d.price - d.down;
   const mr = d.rate / 100 / 12;
   const n = d.term * 12;
@@ -85,21 +176,38 @@ function calcDeal(d: DealInput): DealResult {
   const capRate = d.price > 0 ? (noi / d.price) * 100 : 0;
   const dscr = totalMonthly > 0 ? effectiveRent / totalMonthly : 0;
 
-  let score = 50;
-  if (coc > 10) score += 20; else if (coc > 6) score += 10; else if (coc < 0) score -= 20; else if (coc < 3) score -= 10;
-  if (capRate > 8) score += 15; else if (capRate > 5) score += 8; else if (capRate < 3) score -= 15; else if (capRate < 5) score -= 5;
-  if (dscr > 1.4) score += 15; else if (dscr > 1.2) score += 8; else if (dscr < 1.0) score -= 20; else if (dscr < 1.1) score -= 10;
-  if (cashflow > 300) score += 10; else if (cashflow > 0) score += 3; else if (cashflow < -300) score -= 15; else if (cashflow < 0) score -= 8;
-  score = Math.max(1, Math.min(100, Math.round(score)));
+  // Financial base score (max 60 pts swing from 50)
+  let baseScore = 50;
+  if (coc > 10) baseScore += 20; else if (coc > 6) baseScore += 10; else if (coc < 0) baseScore -= 20; else if (coc < 3) baseScore -= 10;
+  if (capRate > 8) baseScore += 15; else if (capRate > 5) baseScore += 8; else if (capRate < 3) baseScore -= 15; else if (capRate < 5) baseScore -= 5;
+  if (dscr > 1.4) baseScore += 15; else if (dscr > 1.2) baseScore += 8; else if (dscr < 1.0) baseScore -= 20; else if (dscr < 1.1) baseScore -= 10;
+  if (cashflow > 300) baseScore += 10; else if (cashflow > 0) baseScore += 3; else if (cashflow < -300) baseScore -= 15; else if (cashflow < 0) baseScore -= 8;
+  baseScore = Math.max(1, Math.min(100, Math.round(baseScore)));
+
+  // State modifier: –8 to +8 pts (~15–20% influence on a typical deal)
+  const { adj: stateAdj, label: stateAdjLabel } = calcStateAdj(stateAbbr);
+  const score = Math.max(1, Math.min(100, baseScore + stateAdj));
 
   const label: "Great Deal" | "Average" | "Risky" = score >= 70 ? "Great Deal" : score >= 45 ? "Average" : "Risky";
-  const reason = score >= 70
+
+  // Reason blends financial and state context
+  const financeVerdict = score >= 70
     ? `Strong cash flow of $${Math.round(cashflow)}/mo, ${capRate.toFixed(1)}% cap rate, DSCR ${dscr.toFixed(2)}.`
     : score >= 45
-    ? `Moderate performance. $${Math.round(cashflow)}/mo at ${capRate.toFixed(1)}% cap rate.`
-    : `Weak numbers: $${Math.round(cashflow)}/mo, ${capRate.toFixed(1)}% cap rate, DSCR ${dscr.toFixed(2)}.`;
+    ? `Moderate performance — $${Math.round(cashflow)}/mo at ${capRate.toFixed(1)}% cap rate.`
+    : `Weak financials: $${Math.round(cashflow)}/mo, ${capRate.toFixed(1)}% cap rate, DSCR ${dscr.toFixed(2)}.`;
 
-  return { mortgage, effectiveRent, opEx, totalMonthly, cashflow, annualCashflow, coc, capRate, dscr, score, label, reason };
+  const stateClause = stateAdj > 2
+    ? ` ${stateAdjLabel.charAt(0).toUpperCase() + stateAdjLabel.slice(1)} boosts the outlook.`
+    : stateAdj < -2
+    ? ` ${stateAdjLabel.charAt(0).toUpperCase() + stateAdjLabel.slice(1)} reduces attractiveness.`
+    : stateAdj !== 0
+    ? ` State factors have a minor effect.`
+    : "";
+
+  const reason = financeVerdict + stateClause;
+
+  return { mortgage, effectiveRent, opEx, totalMonthly, cashflow, annualCashflow, coc, capRate, dscr, baseScore, stateAdj, stateAdjLabel, score, label, reason };
 }
 
 function fmt(n: number): string {
@@ -663,6 +771,60 @@ function BarChart({ income, expenses }: { income: number; expenses: number }) {
   );
 }
 
+// ─── MiniBarChart — compact 3-bar chart for deal cards ───────────────────────
+function MiniBarChart({ income, expenses }: { income: number; expenses: number }) {
+  const cashflow = income - expenses;
+  const positive = cashflow >= 0;
+  const peak = Math.max(income, expenses, 1);
+
+  // Bar heights scaled to 48px max — keeps the chart compact
+  const iH = Math.max(4, Math.round((income / peak) * 48));
+  const eH = Math.max(4, Math.round((expenses / peak) * 48));
+  const cH = Math.max(4, Math.round((Math.abs(cashflow) / peak) * 48));
+
+  const bars = [
+    { label: "Income",   h: iH,  color: "#059669", value: fmt(income)          },
+    { label: "Expenses", h: eH,  color: "#f87171", value: fmt(expenses)         },
+    { label: "Flow",     h: cH,  color: positive ? "#059669" : "#dc2626",
+      value: fmtSigned(cashflow) },
+  ];
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {/* Bars */}
+      <div style={{
+        display: "flex", alignItems: "flex-end", gap: 6,
+        height: 60, paddingBottom: 0,
+      }}>
+        {bars.map((b, i) => (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            {/* value label above bar */}
+            <span style={{
+              fontSize: 8, fontWeight: 700, color: b.color,
+              fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
+              whiteSpace: "nowrap", lineHeight: 1,
+            }}>{b.value}</span>
+            {/* the bar itself */}
+            <div style={{
+              width: "100%", height: b.h,
+              background: b.color, opacity: i === 1 ? 0.72 : 0.85,
+              borderRadius: "4px 4px 0 0",
+            }} />
+          </div>
+        ))}
+      </div>
+      {/* Baseline + labels */}
+      <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 5, display: "flex", gap: 6 }}>
+        {bars.map((b, i) => (
+          <div key={i} style={{ flex: 1, textAlign: "center" }}>
+            <span style={{ fontSize: 8, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase" }}>{b.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function buildInsights(r: DealResult, d: DealInput): { type: "positive" | "warning" | "risk"; title: string; body: string }[] {
   const insights: { type: "positive" | "warning" | "risk"; title: string; body: string }[] = [];
 
@@ -709,6 +871,195 @@ function buildInsights(r: DealResult, d: DealInput): { type: "positive" | "warni
   return insights.slice(0, 3);
 }
 
+
+// ─── AI-style narrative insight ───────────────────────────────────────────────
+function buildNarrative(r: DealResult, d: DealInput, stateAbbr: string): string {
+  const cf   = Math.round(r.cashflow);
+  const cap  = r.capRate.toFixed(1);
+  const dscr = r.dscr.toFixed(2);
+  const coc  = r.coc.toFixed(1);
+  const downPct = d.price > 0 ? Math.round((d.down / d.price) * 100) : 0;
+  const rentRatio = d.price > 0 ? ((d.rent / d.price) * 100).toFixed(2) : "0";
+  const stateName = stateAbbr
+    ? (({ AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming" } as Record<string,string>)[stateAbbr] ?? stateAbbr)
+    : null;
+
+  // Opening — financial verdict
+  let opening = "";
+  if (cf >= 400 && r.capRate >= 7)
+    opening = `This deal posts ${fmt(cf)}/mo in cash flow against a ${cap}% cap rate — both meaningfully above typical benchmarks.`;
+  else if (cf >= 200 && r.capRate >= 5)
+    opening = `The property generates ${fmt(cf)}/mo after all expenses, with a ${cap}% cap rate that sits in respectable territory.`;
+  else if (cf >= 0)
+    opening = `Cash flow is thin at ${fmt(cf)}/mo. The ${cap}% cap rate suggests this is more of an appreciation play than a cash-flow machine.`;
+  else
+    opening = `With a ${fmt(cf)}/mo shortfall, this property is cash-flow negative at current numbers. The ${cap}% cap rate doesn't offset the carry cost.`;
+
+  // Middle — DSCR and leverage
+  let middle = "";
+  if (r.dscr >= 1.3)
+    middle = ` Debt coverage at ${dscr}x is comfortable — lenders and vacancy can absorb before you're in the red.`;
+  else if (r.dscr >= 1.0)
+    middle = ` Debt coverage at ${dscr}x is tight. One extended vacancy or rate adjustment could flip it negative.`;
+  else
+    middle = ` Debt coverage of ${dscr}x is below 1.0 — rent doesn't fully cover the debt service. High-risk leverage.`;
+
+  // Middle 2 — CoC and down payment
+  let cocNote = "";
+  if (r.coc >= 10)
+    cocNote = ` Your ${coc}% cash-on-cash return is exceptional use of leverage.`;
+  else if (r.coc >= 6)
+    cocNote = ` Cash-on-cash of ${coc}% with ${downPct}% down is reasonable.`;
+  else if (r.coc >= 0)
+    cocNote = ` Cash-on-cash of ${coc}% is below the 8% threshold most investors target.`;
+  else
+    cocNote = ` Negative cash-on-cash (${coc}%) means you're subsidizing this property each month.`;
+
+  // Closing — rent-to-price ratio
+  const rtpNote = parseFloat(rentRatio) >= 0.9
+    ? ` The ${rentRatio}% rent-to-price ratio clears the 1% rule — strong income relative to purchase price.`
+    : parseFloat(rentRatio) >= 0.65
+    ? ` Rent-to-price ratio of ${rentRatio}% misses the 1% rule but may be viable in lower-appreciation markets.`
+    : ` The ${rentRatio}% rent-to-price ratio is well below the 1% rule, indicating price significantly outpaces income potential.`;
+
+  // State close
+  const stateNote = stateName && r.stateAdj !== 0
+    ? ` ${stateName}'s market conditions ${r.stateAdj > 0 ? "add a modest tailwind" : "create a headwind"} to the overall score.`
+    : "";
+
+  return opening + middle + cocNote + rtpNote + stateNote;
+}
+
+// ─── Score drivers breakdown ───────────────────────────────────────────────────
+interface ScoreDriver { label: string; pts: number; note: string; }
+
+function buildDrivers(r: DealResult, d: DealInput, stateAbbr: string): ScoreDriver[] {
+  const drivers: ScoreDriver[] = [];
+
+  // CoC
+  if (r.coc > 10)      drivers.push({ label: "Cash-on-cash return", pts: +20, note: `${r.coc.toFixed(1)}% — excellent` });
+  else if (r.coc > 6)  drivers.push({ label: "Cash-on-cash return", pts: +10, note: `${r.coc.toFixed(1)}% — above average` });
+  else if (r.coc < 0)  drivers.push({ label: "Cash-on-cash return", pts: -20, note: `${r.coc.toFixed(1)}% — negative` });
+  else if (r.coc < 3)  drivers.push({ label: "Cash-on-cash return", pts: -10, note: `${r.coc.toFixed(1)}% — well below target` });
+  else                  drivers.push({ label: "Cash-on-cash return", pts:  0,  note: `${r.coc.toFixed(1)}% — neutral range` });
+
+  // Cap rate
+  if (r.capRate > 8)      drivers.push({ label: "Cap rate", pts: +15, note: `${r.capRate.toFixed(1)}% — above benchmark` });
+  else if (r.capRate > 5) drivers.push({ label: "Cap rate", pts:  +8, note: `${r.capRate.toFixed(1)}% — respectable` });
+  else if (r.capRate < 3) drivers.push({ label: "Cap rate", pts: -15, note: `${r.capRate.toFixed(1)}% — well below target` });
+  else if (r.capRate < 5) drivers.push({ label: "Cap rate", pts:  -5, note: `${r.capRate.toFixed(1)}% — below average` });
+  else                    drivers.push({ label: "Cap rate", pts:   0, note: `${r.capRate.toFixed(1)}% — neutral` });
+
+  // DSCR
+  if (r.dscr > 1.4)      drivers.push({ label: "Debt coverage (DSCR)", pts: +15, note: `${r.dscr.toFixed(2)}x — strong` });
+  else if (r.dscr > 1.2) drivers.push({ label: "Debt coverage (DSCR)", pts:  +8, note: `${r.dscr.toFixed(2)}x — healthy` });
+  else if (r.dscr < 1.0) drivers.push({ label: "Debt coverage (DSCR)", pts: -20, note: `${r.dscr.toFixed(2)}x — rent < expenses` });
+  else if (r.dscr < 1.1) drivers.push({ label: "Debt coverage (DSCR)", pts: -10, note: `${r.dscr.toFixed(2)}x — barely covers` });
+  else                   drivers.push({ label: "Debt coverage (DSCR)", pts:   0, note: `${r.dscr.toFixed(2)}x — neutral` });
+
+  // Cash flow
+  if (r.cashflow > 300)       drivers.push({ label: "Monthly cash flow", pts: +10, note: `+${fmt(r.cashflow)}/mo` });
+  else if (r.cashflow > 0)    drivers.push({ label: "Monthly cash flow", pts:  +3, note: `+${fmt(r.cashflow)}/mo — positive but thin` });
+  else if (r.cashflow < -300) drivers.push({ label: "Monthly cash flow", pts: -15, note: `${fmt(r.cashflow)}/mo — significantly negative` });
+  else if (r.cashflow < 0)    drivers.push({ label: "Monthly cash flow", pts:  -8, note: `${fmt(r.cashflow)}/mo — negative` });
+  else                        drivers.push({ label: "Monthly cash flow", pts:   0, note: "Break-even" });
+
+  // State modifier
+  if (stateAbbr && r.stateAdj !== 0) {
+    drivers.push({
+      label: `${stateAbbr} market factors`,
+      pts: r.stateAdj,
+      note: r.stateAdjLabel || "state adjustment",
+    });
+  }
+
+  // Sort by absolute impact, keep top 5
+  return drivers
+    .filter(d => d.pts !== 0)
+    .sort((a, b) => Math.abs(b.pts) - Math.abs(a.pts))
+    .slice(0, 5);
+}
+
+// ─── Optimization suggestions ─────────────────────────────────────────────────
+interface Optimization { action: string; detail: string; scoreDelta: number; }
+
+function buildOptimizations(r: DealResult, d: DealInput): Optimization[] {
+  const opts: Optimization[] = [];
+
+  // Only suggest things that are genuinely improvable
+  // 1. Rent increase
+  if (d.rent > 0) {
+    const higherRent = d.rent * 1.10;
+    const improved = { ...d, rent: higherRent };
+    const newR = calcDeal(improved);
+    const delta = newR.baseScore - r.baseScore;
+    if (delta > 0) opts.push({
+      action: `Increase monthly rent by ${fmt(d.rent * 0.10)}`,
+      detail: `From ${fmt(d.rent)} to ${fmt(higherRent)}/mo — improves cash flow to ${fmt(newR.cashflow)}/mo`,
+      scoreDelta: delta,
+    });
+  }
+
+  // 2. Price reduction
+  if (d.price > 0) {
+    const lowerPrice = d.price * 0.95;
+    const newDown = d.down * (lowerPrice / d.price); // proportional down
+    const improved = { ...d, price: lowerPrice, down: newDown };
+    const newR = calcDeal(improved);
+    const delta = newR.baseScore - r.baseScore;
+    if (delta > 0) opts.push({
+      action: `Negotiate price down 5% (−${fmt(d.price * 0.05)})`,
+      detail: `At ${fmt(lowerPrice)}, cap rate rises to ${newR.capRate.toFixed(1)}%, cash flow ${fmt(newR.cashflow)}/mo`,
+      scoreDelta: delta,
+    });
+  }
+
+  // 3. Lower down payment (improve CoC — only if CoC is the weak point)
+  if (r.coc < 6 && d.down > 0 && r.dscr >= 1.0) {
+    const lowerDown = d.price * 0.20;
+    if (lowerDown < d.down) {
+      const improved = { ...d, down: lowerDown };
+      const newR = calcDeal(improved);
+      const delta = newR.baseScore - r.baseScore;
+      if (delta > 0) opts.push({
+        action: `Reduce down payment to 20% (${fmt(lowerDown)})`,
+        detail: `Improves CoC from ${r.coc.toFixed(1)}% → ${newR.coc.toFixed(1)}%, preserves more capital`,
+        scoreDelta: delta,
+      });
+    }
+  }
+
+  // 4. Higher down payment (improve DSCR — only if DSCR is the problem)
+  if (r.dscr < 1.1 && d.price > 0) {
+    const higherDown = d.price * 0.30;
+    if (higherDown > d.down) {
+      const improved = { ...d, down: higherDown };
+      const newR = calcDeal(improved);
+      const delta = newR.baseScore - r.baseScore;
+      if (delta > 0) opts.push({
+        action: `Increase down payment to 30% (${fmt(higherDown)})`,
+        detail: `Lowers mortgage, improves DSCR from ${r.dscr.toFixed(2)} → ${newR.dscr.toFixed(2)}x`,
+        scoreDelta: delta,
+      });
+    }
+  }
+
+  // 5. Reduce expenses — if opEx is heavy
+  const opExRatio = r.totalMonthly > 0 ? r.opEx / r.totalMonthly : 0;
+  if (opExRatio > 0.45 && r.opEx > 0) {
+    const trimmedExpenses = { ...d, repairs: Math.round(d.repairs * 0.7), mgmt: Math.round(d.mgmt * 0.7), other: 0 };
+    const newR = calcDeal(trimmedExpenses);
+    const delta = newR.baseScore - r.baseScore;
+    if (delta > 0) opts.push({
+      action: "Self-manage and trim maintenance budget",
+      detail: `Operating expenses at ${Math.round(opExRatio * 100)}% of outflow — self-managing saves ~${fmt(d.mgmt)}/mo`,
+      scoreDelta: delta,
+    });
+  }
+
+  return opts.sort((a, b) => b.scoreDelta - a.scoreDelta).slice(0, 3);
+}
+
 interface InvestorDashboardProps {
   result: AnalysisResult;
   saved: boolean;
@@ -717,12 +1068,11 @@ interface InvestorDashboardProps {
   scoreColor: string;
   user: AuthUser | null;
   onOpenLogin: () => void;
+  stateAbbr?: string;
 }
 
-function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, user, onOpenLogin }: InvestorDashboardProps) {
+function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, user, onOpenLogin, stateAbbr = "" }: InvestorDashboardProps) {
   const { r, d, rentMissing } = result;
-  const insights = rentMissing ? [] : buildInsights(r, d);
-  const vacancyLoss = d.rent - r.effectiveRent;
 
   if (rentMissing) {
     return (
@@ -744,117 +1094,171 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
     );
   }
 
+  const narrative   = buildNarrative(r, d, stateAbbr);
+  const drivers     = buildDrivers(r, d, stateAbbr);
+  const opts        = buildOptimizations(r, d);
+  const vacancyLoss = d.rent - r.effectiveRent;
+
+  // Section header shared style
+  const sh: React.CSSProperties = {
+    fontSize: 10, letterSpacing: "0.13em", textTransform: "uppercase",
+    color: "#64748b", fontWeight: 700, marginBottom: 16,
+    display: "flex", alignItems: "center", gap: 8,
+  };
+  // Thin rule after label — done with a flex child
+  const rule = <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
 
-      {/* ── 1. SUMMARY CARDS ── */}
-      <div style={{ marginBottom: 36 }}>
-        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 20 }}>Investment Deal Score</p>
-        {/* Score hero */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 20, marginBottom: 28, paddingBottom: 28, borderBottom: `1px solid ${C.rule}` }}>
-          <span style={{ fontSize: 88, fontWeight: 500, lineHeight: 0.9, letterSpacing: "-0.05em", color: scoreColor, fontVariantNumeric: "tabular-nums" }}>
-            {r.score}
-          </span>
-          <div>
+      {/* ══ 1. SCORE HERO ══════════════════════════════════════════════════════ */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ ...sh }}><span>Deal Score</span>{rule}</div>
+
+        {/* Big number + chip */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, marginBottom: 20 }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <span style={{
+              fontSize: 96, fontWeight: 800, lineHeight: 0.85,
+              letterSpacing: "-0.06em", color: scoreColor,
+              fontVariantNumeric: "tabular-nums", display: "block",
+            }}>
+              {r.score}
+            </span>
+            <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 6, display: "block" }}>out of 100</span>
+          </div>
+          <div style={{ paddingTop: 6, flex: 1 }}>
             <ScoreChip label={r.label} />
-            <p style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.65, maxWidth: 200 }}>{r.reason}</p>
+            {/* Mini bar — visual score meter */}
+            <div style={{ marginTop: 12, height: 6, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 999, width: `${r.score}%`,
+                background: r.score >= 70
+                  ? "linear-gradient(90deg,#059669,#10b981)"
+                  : r.score >= 45
+                  ? "linear-gradient(90deg,#d97706,#f59e0b)"
+                  : "linear-gradient(90deg,#dc2626,#ef4444)",
+                transition: "width 0.6s ease",
+              }} />
+            </div>
+            <p style={{ fontSize: 11, color: "#475569", marginTop: 10, lineHeight: 1.65 }}>{r.reason}</p>
           </div>
         </div>
 
-        {/* KPI cards — 2×2 grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 1, background: C.rule }}>
+        {/* Score breakdown card */}
+        <div style={{
+          background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14,
+          padding: "14px 18px", display: "flex", flexDirection: "column", gap: 9,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "#64748b" }}>Base deal score</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>{r.baseScore}</span>
+          </div>
+          {stateAbbr ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "#64748b" }}>
+                State factors <span style={{ color: "#94a3b8" }}>({stateAbbr})</span>
+              </span>
+              {r.stateAdj !== 0 ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums",
+                    color: r.stateAdj > 0 ? "#059669" : "#dc2626",
+                  }}>{r.stateAdj > 0 ? "+" : ""}{r.stateAdj}</span>
+                  <span style={{ fontSize: 10, color: "#94a3b8" }}>{r.stateAdjLabel}</span>
+                </div>
+              ) : (
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>Neutral</span>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>
+              Select a state to factor in market conditions
+            </div>
+          )}
+          <div style={{ height: 1, background: "#e2e8f0" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Final score</span>
+            <span style={{ fontSize: 16, fontWeight: 900, color: scoreColor, fontVariantNumeric: "tabular-nums" }}>{r.score}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ 2. KPI CARDS ═══════════════════════════════════════════════════════ */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ ...sh }}><span>Key Metrics</span>{rule}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
           {[
-            {
-              label: "Monthly Cash Flow",
-              value: fmtSigned(r.cashflow),
-              sub: `${fmtSigned(r.annualCashflow)}/yr`,
-              color: r.cashflow >= 0 ? C.green : C.red,
-            },
-            {
-              label: "Cap Rate",
-              value: r.capRate.toFixed(2) + "%",
-              sub: r.capRate >= 6 ? "Above benchmark" : r.capRate >= 4 ? "Average" : "Below average",
-              color: r.capRate >= 6 ? C.green : r.capRate < 4 ? C.red : C.text,
-            },
-            {
-              label: "Cash-on-Cash Return",
-              value: r.coc.toFixed(2) + "%",
-              sub: r.coc >= 8 ? "Excellent" : r.coc >= 5 ? "Acceptable" : "Below target",
-              color: r.coc >= 8 ? C.green : r.coc < 3 ? C.red : C.text,
-            },
-            {
-              label: "DSCR",
-              value: r.dscr.toFixed(2),
-              sub: r.dscr >= 1.25 ? "Healthy coverage" : r.dscr >= 1.0 ? "Breakeven" : "Negative carry",
-              color: r.dscr >= 1.25 ? C.green : r.dscr < 1.0 ? C.red : C.text,
-            },
+            { label: "Monthly Cash Flow", value: fmtSigned(r.cashflow), sub: `${fmtSigned(r.annualCashflow)}/yr`, color: r.cashflow >= 0 ? C.green : C.red },
+            { label: "Cap Rate",          value: r.capRate.toFixed(2) + "%", sub: r.capRate >= 6 ? "Above benchmark" : r.capRate >= 4 ? "Average" : "Below average", color: r.capRate >= 6 ? C.green : r.capRate < 4 ? C.red : "#475569" },
+            { label: "Cash-on-Cash",      value: r.coc.toFixed(2) + "%",    sub: r.coc >= 8 ? "Excellent" : r.coc >= 5 ? "Acceptable" : "Below target", color: r.coc >= 8 ? C.green : r.coc < 3 ? C.red : "#475569" },
+            { label: "DSCR",              value: r.dscr.toFixed(2),          sub: r.dscr >= 1.25 ? "Healthy coverage" : r.dscr >= 1.0 ? "Breakeven" : "Negative carry", color: r.dscr >= 1.25 ? C.green : r.dscr < 1.0 ? C.red : "#475569" },
           ].map(card => (
-            <div key={card.label} style={{ background: C.bg, padding: "20px 18px" }}>
-              <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{card.label}</p>
-              <p style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.03em", color: card.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{card.value}</p>
-              <p style={{ fontSize: 10, color: C.faint, marginTop: 6 }}>{card.sub}</p>
+            <div key={card.label} style={{
+              background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14,
+              padding: "18px 18px 16px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)",
+            }}>
+              <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{card.label}</p>
+              <p style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.04em", color: card.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{card.value}</p>
+              <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 7 }}>{card.sub}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── 2. INCOME VS EXPENSES CHART ── */}
-      <div style={{ paddingBottom: 36, marginBottom: 36, borderBottom: `1px solid ${C.rule}` }}>
-        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 20 }}>Income vs. Expenses</p>
-        <BarChart income={r.effectiveRent} expenses={r.totalMonthly} />
-      </div>
-
-      {/* ── 3. BREAKDOWN TABLE ── */}
-      <div style={{ paddingBottom: 36, marginBottom: 36, borderBottom: `1px solid ${C.rule}` }}>
-        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 20 }}>Monthly Breakdown</p>
-        {/* Income side */}
-        <div style={{ marginBottom: 4 }}>
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, paddingBottom: 6, borderBottom: `1px solid ${C.rule}` }}>Income</p>
-          <MetRow label="Gross Rent" value={fmt(d.rent)} />
-          <MetRow label="Vacancy Loss" value={"−" + fmt(vacancyLoss)} accent="red" />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 0", borderBottom: `1px solid ${C.rule}` }}>
-            <span style={{ fontSize: 10, color: C.text, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Effective Rent</span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmt(r.effectiveRent)}</span>
+      {/* ══ 3. AI INVESTMENT INSIGHT ═══════════════════════════════════════════ */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ ...sh }}><span>AI Investment Insight</span>{rule}</div>
+        <div style={{
+          background: "linear-gradient(135deg,#eff6ff,#f0fdf4)",
+          border: "1px solid #bfdbfe", borderRadius: 14, padding: "18px 20px",
+          display: "flex", gap: 14, alignItems: "flex-start",
+        }}>
+          <div style={{
+            flexShrink: 0, width: 32, height: 32, borderRadius: 8,
+            background: "linear-gradient(135deg,#2563eb,#059669)",
+            display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1,
+          }}>
+            <span style={{ fontSize: 15 }}>✦</span>
           </div>
-        </div>
-
-        {/* Expenses side */}
-        <div style={{ marginTop: 16, marginBottom: 4 }}>
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, paddingBottom: 6, borderBottom: `1px solid ${C.rule}` }}>Expenses</p>
-          <MetRow label="Mortgage (P&I)" value={fmt(r.mortgage)} />
-          {d.taxes > 0 && <MetRow label="Property Taxes" value={fmt(d.taxes)} />}
-          {d.insurance > 0 && <MetRow label="Insurance" value={fmt(d.insurance)} />}
-          {d.hoa > 0 && <MetRow label="HOA" value={fmt(d.hoa)} />}
-          {d.repairs > 0 && <MetRow label="Repairs & Maintenance" value={fmt(d.repairs)} />}
-          {d.mgmt > 0 && <MetRow label="Property Management" value={fmt(d.mgmt)} />}
-          {d.other > 0 && <MetRow label="Other" value={fmt(d.other)} />}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 0", borderBottom: `1px solid ${C.rule}` }}>
-            <span style={{ fontSize: 10, color: C.text, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Total Expenses</span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: C.red, fontVariantNumeric: "tabular-nums" }}>{fmt(r.totalMonthly)}</span>
-          </div>
-        </div>
-
-        {/* Net */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "14px 0 0" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: C.text, letterSpacing: "0.1em", textTransform: "uppercase" }}>Net Cash Flow</span>
-          <span style={{ fontSize: 20, fontWeight: 600, color: r.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>{fmtSigned(r.cashflow)}/mo</span>
+          <p style={{ fontSize: 13, color: "#1e3a5f", lineHeight: 1.75, margin: 0 }}>{narrative}</p>
         </div>
       </div>
 
-      {/* ── 4. DEAL INSIGHTS ── */}
-      {insights.length > 0 && (
-        <div style={{ paddingBottom: 36, marginBottom: 36, borderBottom: `1px solid ${C.rule}` }}>
-          <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 20 }}>Deal Insights</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1, background: C.rule }}>
-            {insights.map((ins) => {
-              const accent = ins.type === "positive" ? C.green : ins.type === "warning" ? C.amber : C.red;
-              const bg = ins.type === "positive" ? "#f0f8f4" : ins.type === "warning" ? "#fdf5e8" : "#fdf0ef";
+      {/* ══ 4. BIGGEST DRIVERS ═════════════════════════════════════════════════ */}
+      {drivers.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ ...sh }}><span>Score Drivers</span>{rule}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {drivers.map((drv, i) => {
+              const positive = drv.pts > 0;
+              const barWidth = Math.min(100, Math.abs(drv.pts) / 20 * 100);
               return (
-                <div key={ins.title} style={{ background: bg, padding: "16px 20px", display: "flex", gap: 14, alignItems: "flex-start" }}>
-                  <div style={{ width: 3, minHeight: 40, background: accent, flexShrink: 0, marginTop: 2 }} />
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 5 }}>{ins.title}</p>
-                    <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.65 }}>{ins.body}</p>
+                <div key={i} style={{
+                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+                  padding: "13px 16px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>{drv.label}</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>{drv.note}</span>
+                    </div>
+                    <span style={{
+                      fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums",
+                      color: positive ? "#059669" : "#dc2626",
+                      background: positive ? "#f0fdf4" : "#fff1f2",
+                      border: `1px solid ${positive ? "#bbf7d0" : "#fecdd3"}`,
+                      borderRadius: 6, padding: "2px 8px", flexShrink: 0, marginLeft: 12,
+                    }}>{positive ? "+" : ""}{drv.pts} pts</span>
+                  </div>
+                  {/* Impact bar */}
+                  <div style={{ height: 4, borderRadius: 999, background: "#f1f5f9", overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", borderRadius: 999,
+                      width: `${barWidth}%`,
+                      background: positive ? "#10b981" : "#f87171",
+                      transition: "width 0.5s ease",
+                    }} />
                   </div>
                 </div>
               );
@@ -863,28 +1267,127 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
         </div>
       )}
 
-      {/* ── SAVE BUTTON — auth-aware ── */}
+      {/* ══ 5. OPTIMIZATION SUGGESTIONS ═══════════════════════════════════════ */}
+      {opts.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ ...sh }}><span>Optimization Suggestions</span>{rule}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {opts.map((opt, i) => (
+              <div key={i} style={{
+                background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+                padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: 14,
+              }}>
+                <div style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: 8,
+                  background: "#f0fdf4", border: "1px solid #bbf7d0",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <span style={{ fontSize: 13 }}>↑</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{opt.action}</p>
+                  <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>{opt.detail}</p>
+                </div>
+                <div style={{
+                  flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#059669",
+                  background: "#f0fdf4", border: "1px solid #bbf7d0",
+                  borderRadius: 8, padding: "4px 10px", whiteSpace: "nowrap",
+                }}>+{opt.scoreDelta} pts</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ 6. INCOME vs EXPENSES ══════════════════════════════════════════════ */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ ...sh }}><span>Income vs. Expenses</span>{rule}</div>
+        <BarChart income={r.effectiveRent} expenses={r.totalMonthly} />
+      </div>
+
+      {/* ══ 7. MONTHLY BREAKDOWN ═══════════════════════════════════════════════ */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ ...sh }}><span>Monthly Breakdown</span>{rule}</div>
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden" }}>
+          {/* Income */}
+          <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+            <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 0 }}>Income</p>
+          </div>
+          <div style={{ padding: "6px 18px" }}>
+            <MetRow label="Gross Rent" value={fmt(d.rent)} />
+            <MetRow label="Vacancy Loss" value={"−" + fmt(vacancyLoss)} accent="red" />
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Effective Rent</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmt(r.effectiveRent)}</span>
+            </div>
+          </div>
+          {/* Expenses */}
+          <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", borderTop: "1px solid #e2e8f0", background: "#f8fafc" }}>
+            <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 0 }}>Expenses</p>
+          </div>
+          <div style={{ padding: "6px 18px" }}>
+            <MetRow label="Mortgage (P&I)" value={fmt(r.mortgage)} />
+            {d.taxes > 0 && <MetRow label="Property Taxes" value={fmt(d.taxes)} />}
+            {d.insurance > 0 && <MetRow label="Insurance" value={fmt(d.insurance)} />}
+            {d.hoa > 0 && <MetRow label="HOA" value={fmt(d.hoa)} />}
+            {d.repairs > 0 && <MetRow label="Repairs & Maintenance" value={fmt(d.repairs)} />}
+            {d.mgmt > 0 && <MetRow label="Property Management" value={fmt(d.mgmt)} />}
+            {d.other > 0 && <MetRow label="Other" value={fmt(d.other)} />}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Total Expenses</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.red, fontVariantNumeric: "tabular-nums" }}>{fmt(r.totalMonthly)}</span>
+            </div>
+          </div>
+          {/* Net */}
+          <div style={{
+            padding: "16px 18px", borderTop: "2px solid #e2e8f0",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: r.cashflow >= 0 ? "#f0fdf4" : "#fff1f2",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", letterSpacing: "0.03em" }}>Net Cash Flow / mo</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: r.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>{fmtSigned(r.cashflow)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ 8. SAVE BUTTON ═════════════════════════════════════════════════════ */}
       {user ? (
         <button
           onClick={onSave}
           disabled={saved}
-          onMouseEnter={e => { if (!saved) (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-          style={{ width: "100%", padding: "15px", background: saved ? C.bg2 : C.text, color: saved ? C.faint : C.bg, border: `1px solid ${saved ? C.rule : C.text}`, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 600, cursor: saved ? "default" : "pointer", fontFamily: "inherit", transition: "all 0.12s" }}
+          onMouseEnter={e => { if (!saved) { (e.currentTarget as HTMLElement).style.opacity = "0.88"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; } }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+          style={{
+            width: "100%", padding: "14px",
+            background: saved ? "#f1f5f9" : "linear-gradient(135deg,#2563eb,#0ea5e9)",
+            color: saved ? "#94a3b8" : "#fff",
+            border: `1.5px solid ${saved ? "#e2e8f0" : "transparent"}`,
+            borderRadius: 14, fontSize: 13, letterSpacing: "0.06em",
+            fontWeight: 700, cursor: saved ? "default" : "pointer",
+            fontFamily: "inherit", transition: "all 0.18s",
+            boxShadow: saved ? "none" : "0 4px 14px rgba(37,99,235,0.3)",
+          }}
         >
-          {saved ? "✓  Saved to Dashboard" : "Save Deal"}
+          {saved ? "✓  Saved to Dashboard" : "Save Deal →"}
         </button>
       ) : (
-        <div style={{ border: `1px solid ${C.rule}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{
+          background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14,
+          padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        }}>
           <div>
-            <p style={{ fontSize: 12, fontWeight: 500, color: C.text, marginBottom: 3 }}>Want to save this deal?</p>
-            <p style={{ fontSize: 11, color: C.faint }}>Log in to save deals to your dashboard.</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", marginBottom: 3 }}>Want to save this deal?</p>
+            <p style={{ fontSize: 11, color: "#64748b" }}>Log in to save deals to your dashboard.</p>
           </div>
           <button
             onClick={onOpenLogin}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            style={{ flexShrink: 0, padding: "9px 18px", background: C.text, color: C.bg, border: "none", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s" }}
+            style={{
+              flexShrink: 0, padding: "9px 20px",
+              background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+              color: "#fff", border: "none", borderRadius: 10,
+              fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              transition: "opacity 0.15s", boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+            }}
           >
             Log In
           </button>
@@ -3453,7 +3956,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
     };
 
     const rentMissing = d.rent === 0;
-    setResult({ r: calcDeal(d), d, rentMissing });
+    setResult({ r: calcDeal(d, form.state), d, rentMissing, stateAbbr: form.state });
     setSaved(false);
   }
 
@@ -3961,6 +4464,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                 /* ── INVESTOR RESULTS → full dashboard ── */
                 <InvestorDashboard
                   result={result}
+                  stateAbbr={result.stateAbbr}
                   saved={saved}
                   onSave={handleSave}
                   onFocusRent={focusRentInput}
@@ -4160,7 +4664,7 @@ function DealDetailModal({ deal, onClose }: { deal: SavedDeal; onClose: () => vo
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 300,
-        background: "rgba(30,28,26,0.72)",
+        background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)",
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 24,
       }}
@@ -4168,77 +4672,93 @@ function DealDetailModal({ deal, onClose }: { deal: SavedDeal; onClose: () => vo
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: C.bg, width: "100%", maxWidth: 560,
+          background: "#fff", width: "100%", maxWidth: 560,
           maxHeight: "90vh", overflowY: "auto",
-          border: `1px solid ${C.rule}`,
+          border: "1px solid #e2e8f0", borderRadius: 24,
+          boxShadow: "0 24px 64px rgba(15,23,42,0.16)",
         }}
       >
         {/* Modal header */}
-        <div style={{ padding: "24px 28px", borderBottom: `1px solid ${C.rule}`, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ padding: "24px 28px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <p style={{ fontSize: 10, color: C.faint, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>Deal Detail</p>
-            <h2 style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.025em", color: C.text, margin: 0 }}>{deal.address.split(",")[0]}</h2>
-            <p style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>{deal.address}</p>
+            <p style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Deal Detail</p>
+            <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "#0f172a", margin: 0 }}>{deal.address.split(",")[0]}</h2>
+            {deal.address.includes(",") && (
+              <p style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{deal.address.split(",").slice(1).join(",").trim()}</p>
+            )}
           </div>
           <button
             onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.faint, fontFamily: "inherit", lineHeight: 1, padding: 4, marginTop: -4 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.text; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.faint; }}
+            style={{ background: "#f1f5f9", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b", fontFamily: "inherit", lineHeight: 1, padding: "7px 10px", borderRadius: 8, transition: "all 0.15s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#e2e8f0"; (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#f1f5f9"; (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
           >
             ×
           </button>
         </div>
 
         <div style={{ padding: "24px 28px" }}>
-          {/* Score */}
-          <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 28, paddingBottom: 24, borderBottom: `1px solid ${C.rule}` }}>
-            <span style={{ fontSize: 72, fontWeight: 500, lineHeight: 0.9, letterSpacing: "-0.05em", color: sc, fontVariantNumeric: "tabular-nums" }}>
-              {deal.score}
-            </span>
-            <div>
+          {/* Score hero */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #f1f5f9" }}>
+            <div style={{ flexShrink: 0 }}>
+              <span style={{ fontSize: 80, fontWeight: 800, lineHeight: 0.85, letterSpacing: "-0.06em", color: sc, fontVariantNumeric: "tabular-nums", display: "block" }}>
+                {deal.score}
+              </span>
+              <span style={{ fontSize: 10, color: "#94a3b8", display: "block", marginTop: 5 }}>/ 100</span>
+            </div>
+            <div style={{ paddingTop: 8, flex: 1 }}>
               <ScoreChip label={deal.label} />
-              <p style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.6, maxWidth: 240 }}>{deal.reason}</p>
+              {/* score meter */}
+              <div style={{ marginTop: 12, height: 5, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+                <div style={{ height: "100%", borderRadius: 999, width: `${deal.score}%`,
+                  background: deal.score >= 70 ? "linear-gradient(90deg,#059669,#10b981)" : deal.score >= 45 ? "linear-gradient(90deg,#d97706,#f59e0b)" : "linear-gradient(90deg,#dc2626,#ef4444)"
+                }} />
+              </div>
+              <p style={{ fontSize: 11, color: "#475569", marginTop: 10, lineHeight: 1.65 }}>{deal.reason}</p>
             </div>
           </div>
 
           {/* Key metrics */}
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>Key Metrics</p>
-          {([
-            { label: "Monthly Cash Flow", value: fmtSigned(deal.cashflow), accent: deal.cashflow >= 0 ? "green" : "red" },
-            { label: "Annual Cash Flow",   value: fmtSigned(deal.annualCashflow), accent: deal.annualCashflow >= 0 ? "green" : "red" },
-            { label: "Cap Rate",           value: deal.capRate.toFixed(2) + "%",  accent: deal.capRate >= 6 ? "green" : deal.capRate < 4 ? "red" : null },
-            { label: "CoC Return",         value: deal.coc.toFixed(2) + "%",      accent: deal.coc >= 8 ? "green" : deal.coc < 3 ? "red" : null },
-            { label: "DSCR",               value: deal.dscr.toFixed(2),            accent: deal.dscr >= 1.2 ? "green" : deal.dscr < 1 ? "red" : null },
-            { label: "Monthly Mortgage",   value: fmt(deal.mortgage),              accent: null },
-            { label: "Total Expenses",     value: fmt(deal.totalMonthly),          accent: null },
-          ] as { label: string; value: string; accent: string | null }[]).map(row => {
-            const color = row.accent === "green" ? C.green : row.accent === "red" ? C.red : C.text;
-            return (
-              <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "11px 0", borderBottom: `1px solid ${C.rule}` }}>
-                <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>{row.label}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, color, fontVariantNumeric: "tabular-nums" }}>{row.value}</span>
-              </div>
-            );
-          })}
+          <p style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 12 }}>Key Metrics</p>
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", marginBottom: 20 }}>
+            {([
+              { label: "Monthly Cash Flow", value: fmtSigned(deal.cashflow),      accent: deal.cashflow >= 0 ? "green" : "red" },
+              { label: "Annual Cash Flow",  value: fmtSigned(deal.annualCashflow), accent: deal.annualCashflow >= 0 ? "green" : "red" },
+              { label: "Cap Rate",          value: deal.capRate.toFixed(2) + "%",  accent: deal.capRate >= 6 ? "green" : deal.capRate < 4 ? "red" : null },
+              { label: "CoC Return",        value: deal.coc.toFixed(2) + "%",      accent: deal.coc >= 8 ? "green" : deal.coc < 3 ? "red" : null },
+              { label: "DSCR",              value: deal.dscr.toFixed(2),            accent: deal.dscr >= 1.2 ? "green" : deal.dscr < 1 ? "red" : null },
+              { label: "Monthly Mortgage",  value: fmt(deal.mortgage),              accent: null },
+              { label: "Total Expenses",    value: fmt(deal.totalMonthly),          accent: null },
+            ] as { label: string; value: string; accent: string | null }[]).map((row, i, arr) => {
+              const color = row.accent === "green" ? "#059669" : row.accent === "red" ? "#dc2626" : "#0f172a";
+              return (
+                <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 16px", borderBottom: i < arr.length - 1 ? "1px solid #e2e8f0" : "none" }}>
+                  <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>{row.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{row.value}</span>
+                </div>
+              );
+            })}
+          </div>
 
           {/* Property details */}
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 24, marginBottom: 14 }}>Property Details</p>
-          {([
-            { label: "Purchase Price", value: fmt(deal.price) },
-            { label: "Down Payment",   value: fmt(deal.down) + " (" + Math.round(deal.down / deal.price * 100) + "%)" },
-            { label: "Interest Rate",  value: deal.rate + "%" },
-            { label: "Loan Term",      value: deal.term + " years" },
-            { label: "Monthly Rent",   value: deal.rent > 0 ? fmt(deal.rent) : "—" },
-          ] as { label: string; value: string }[]).map(row => (
-            <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "11px 0", borderBottom: `1px solid ${C.rule}` }}>
-              <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>{row.label}</span>
-              <span style={{ fontSize: 14, fontWeight: 500, color: C.text, fontVariantNumeric: "tabular-nums" }}>{row.value}</span>
-            </div>
-          ))}
+          <p style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 12 }}>Property Details</p>
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden" }}>
+            {([
+              { label: "Purchase Price", value: fmt(deal.price) },
+              { label: "Down Payment",   value: fmt(deal.down) + " (" + Math.round(deal.down / deal.price * 100) + "%)" },
+              { label: "Interest Rate",  value: deal.rate + "%" },
+              { label: "Loan Term",      value: deal.term + " years" },
+              { label: "Monthly Rent",   value: deal.rent > 0 ? fmt(deal.rent) : "—" },
+            ] as { label: string; value: string }[]).map((row, i, arr) => (
+              <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 16px", borderBottom: i < arr.length - 1 ? "1px solid #e2e8f0" : "none" }}>
+                <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>{row.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
 
           {savedDate && (
-            <p style={{ fontSize: 10, color: C.faint, marginTop: 20, textAlign: "right", fontStyle: "italic" }}>
+            <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 16, textAlign: "right" }}>
               Saved {savedDate}
             </p>
           )}
@@ -4307,24 +4827,34 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
   // ── Auth gate ──────────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
-        <div style={{ textAlign: "center", maxWidth: 360 }}>
-          <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 20 }}>My Deals</p>
-          <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.03em", color: C.text, marginBottom: 12 }}>Log in to see your saved deals</h1>
-          <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, marginBottom: 32 }}>
+      <div style={{ background: "#f8fafc", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
+        <div style={{ textAlign: "center", maxWidth: 380 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: "linear-gradient(135deg,#eff6ff,#f0fdf4)", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", fontSize: 24 }}>
+            🏠
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.03em", color: "#0f172a", marginBottom: 10 }}>
+            Log in to see your deals
+          </h1>
+          <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.7, marginBottom: 32 }}>
             Your saved deals are tied to your account. Log in to view, manage, and compare them.
           </p>
           <button
             onClick={onOpenLogin}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            style={{ padding: "13px 32px", background: C.text, color: C.bg, border: "none", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.88"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+            style={{
+              padding: "13px 36px", border: "none", borderRadius: 12,
+              background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+              color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              fontFamily: "inherit", transition: "all 0.18s",
+              boxShadow: "0 4px 14px rgba(37,99,235,0.3)",
+            }}
           >
-            Log In
+            Log In →
           </button>
-          <p style={{ fontSize: 12, color: C.faint, marginTop: 16 }}>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 18 }}>
             No account?{" "}
-            <button onClick={onAnalyze} style={{ background: "none", border: "none", color: C.blue, fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline", textUnderlineOffset: 2 }}>
+            <button onClick={onAnalyze} style={{ background: "none", border: "none", color: "#2563eb", fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: 0, fontWeight: 600 }}>
               Analyze a deal first
             </button>
           </p>
@@ -4334,44 +4864,62 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
   }
 
   return (
-    <div style={{ background: "transparent", minHeight: "100vh", color: C.text }}>
+    <div style={{ background: "#f8fafc", minHeight: "100vh", color: "#0f172a" }}>
       {/* Detail modal */}
       {viewDeal && <DealDetailModal deal={viewDeal} onClose={() => setViewDeal(null)} />}
 
-      {/* Header */}
-      <div style={{ borderBottom: `1px solid ${C.rule}`, padding: "clamp(16px,2.5vw,32px) clamp(14px,4vw,48px)" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <div>
-            <h1 style={{ fontSize: 30, fontWeight: 500, letterSpacing: "-0.03em", margin: 0, color: C.text }}>My Deals</h1>
-            <p style={{ fontSize: 11, color: C.faint, marginTop: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              {deals.length === 0 ? "No saved deals yet" : `${deals.length} saved deal${deals.length !== 1 ? "s" : ""}`}
-            </p>
+      {/* ── Header — matches Analyzer header style ── */}
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)" }}>
+        <div style={{ maxWidth: 1260, margin: "0 auto", padding: "clamp(16px,2.5vw,28px) clamp(16px,3vw,40px)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: "#0f172a" }}>My Deals</h1>
+              <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
+                {deals.length === 0 ? "No saved deals yet" : `${deals.length} saved deal${deals.length !== 1 ? "s" : ""}`}
+              </p>
+            </div>
+            <button
+              onClick={onAnalyze}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.88"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+              style={{
+                padding: "10px 22px", border: "none", borderRadius: 10,
+                background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+                color: "#fff", fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+                transition: "all 0.18s", boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+              }}
+            >
+              + Analyze New Deal
+            </button>
           </div>
-          <button onClick={onAnalyze} style={{ background: "transparent", color: C.text, border: `1px solid ${C.text}`, padding: "10px 22px", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-            + Analyze New Deal
-          </button>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "clamp(20px,3.5vw,44px) clamp(14px,4vw,48px)" }}>
+      <div style={{ maxWidth: 1260, margin: "0 auto", padding: "clamp(20px,3vw,36px) clamp(16px,3vw,40px)" }}>
 
-        {/* Bulk action bar — select all + delete selected */}
+        {/* ── Bulk action bar ── */}
         {deals.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, padding: "12px 18px", background: C.bg2, border: `1px solid ${C.rule}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginBottom: 16, padding: "10px 16px",
+            background: "rgba(255,255,255,0.92)", border: "1px solid #e2e8f0",
+            borderRadius: 12, flexWrap: "wrap", gap: 10,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={() => allSelected ? clearSelection() : selectAll()}
-                  style={{ accentColor: C.text, cursor: "pointer", width: 14, height: 14 }}
+                  style={{ accentColor: "#2563eb", cursor: "pointer", width: 15, height: 15 }}
                 />
-                <span style={{ fontSize: 11, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: 12, color: "#475569", fontWeight: 500 }}>
                   {allSelected ? "Deselect All" : "Select All"}
                 </span>
               </label>
               {selected.size > 0 && (
-                <span style={{ fontSize: 11, color: C.faint }}>
+                <span style={{ fontSize: 11, color: "#94a3b8", background: "#f1f5f9", borderRadius: 6, padding: "2px 8px" }}>
                   {selected.size} selected
                 </span>
               )}
@@ -4380,21 +4928,21 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
               !deleteAllConfirm ? (
                 <button
                   onClick={() => setDeleteAllConfirm(true)}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; (e.currentTarget as HTMLElement).style.borderColor = C.red; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.muted; (e.currentTarget as HTMLElement).style.borderColor = C.rule; }}
-                  style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", background: "transparent", border: `1px solid ${C.rule}`, color: C.muted, padding: "6px 16px", cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#dc2626"; (e.currentTarget as HTMLElement).style.color = "#dc2626"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+                  style={{ fontSize: 12, background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, transition: "all 0.15s" }}
                 >
                   Delete {selected.size} Deal{selected.size !== 1 ? "s" : ""}
                 </button>
               ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 11, color: C.red }}>Delete {selected.size} deal{selected.size !== 1 ? "s" : ""}?</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 500 }}>Delete {selected.size} deal{selected.size !== 1 ? "s" : ""}?</span>
                   <button onClick={deleteSelected}
-                    style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", background: C.red, border: "none", color: "#fff", padding: "6px 16px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>
+                    style={{ fontSize: 12, background: "#dc2626", border: "none", borderRadius: 8, color: "#fff", padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>
                     Confirm
                   </button>
                   <button onClick={() => setDeleteAllConfirm(false)}
-                    style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", background: "transparent", border: `1px solid ${C.rule}`, color: C.muted, padding: "6px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+                    style={{ fontSize: 12, background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", padding: "6px 12px", cursor: "pointer", fontFamily: "inherit" }}>
                     Cancel
                   </button>
                 </div>
@@ -4403,148 +4951,228 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
           </div>
         )}
 
-        {/* Compare bar */}
+        {/* ── Compare bar ── */}
         {compareIds.length >= 2 && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${C.rule}`, padding: "16px 24px", marginBottom: 36 }}>
-            <p style={{ fontSize: 11, color: C.muted }}>
-              <span style={{ color: C.text, fontWeight: 500 }}>{compareIds.length}</span> deals selected for comparison
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: "linear-gradient(135deg,#eff6ff,#f0fdf4)", border: "1px solid #bfdbfe",
+            borderRadius: 14, padding: "14px 20px", marginBottom: 20, flexWrap: "wrap", gap: 12,
+          }}>
+            <p style={{ fontSize: 13, color: "#1e3a5f", fontWeight: 500 }}>
+              <span style={{ fontWeight: 800 }}>{compareIds.length}</span> deals selected for comparison
             </p>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={() => compareIds.forEach(id => onToggleCompare(id, false))} style={{ background: "transparent", color: C.muted, border: `1px solid ${C.rule}`, padding: "8px 16px", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit" }}>Clear</button>
-              <button onClick={onCompare} style={{ background: C.text, color: C.bg, border: "none", padding: "8px 20px", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Compare</button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => compareIds.forEach(id => onToggleCompare(id, false))}
+                style={{ background: "#fff", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+                Clear
+              </button>
+              <button onClick={onCompare}
+                style={{
+                  background: "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff",
+                  border: "none", borderRadius: 8, padding: "7px 20px",
+                  fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                  boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+                }}>
+                Compare →
+              </button>
             </div>
           </div>
         )}
 
-        {/* Controls */}
+        {/* ── Search + Sort toolbar ── */}
         {deals.length > 0 && (
-          <div style={{ display: "flex", gap: 14, marginBottom: 36, alignItems: "center" }}>
-            <input
-              type="text" placeholder="Search by address..." value={search}
-              onChange={e => setSearch(e.target.value)}
-              onFocus={e => { e.currentTarget.style.borderColor = C.text; }}
-              onBlur={e => { e.currentTarget.style.borderColor = C.rule; }}
-              style={{ background: C.bg2, border: `1px solid ${C.rule}`, color: C.text, fontSize: 13, padding: "10px 14px", outline: "none", fontFamily: "inherit", width: 260, transition: "border-color 0.12s" }}
-            />
+          <div style={{ display: "flex", gap: 10, marginBottom: 24, alignItems: "center", flexWrap: "wrap" }}>
+            {/* Search */}
+            <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+              <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#94a3b8", pointerEvents: "none" }}>🔍</span>
+              <input
+                type="text" placeholder="Search by address…" value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{
+                  width: "100%", background: "#fff", border: "1.5px solid #e2e8f0",
+                  borderRadius: 12, color: "#0f172a", fontSize: 13,
+                  padding: "11px 14px 11px 36px", outline: "none",
+                  fontFamily: "inherit", boxSizing: "border-box",
+                  transition: "border-color 0.18s, box-shadow 0.18s",
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+            </div>
+            {/* Sort */}
             <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
-              style={{ background: C.bg2, border: `1px solid ${C.rule}`, color: C.muted, fontSize: 10, padding: "10px 14px", outline: "none", fontFamily: "inherit", letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
-              <option value="score">Sort — Deal Score</option>
-              <option value="cashflow">Sort — Best Cash Flow</option>
-              <option value="cap">Sort — Cap Rate</option>
-              <option value="coc">Sort — CoC Return</option>
+              style={{
+                background: `#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center`,
+                border: "1.5px solid #e2e8f0", borderRadius: 12, color: "#475569",
+                fontSize: 13, padding: "11px 36px 11px 14px",
+                outline: "none", fontFamily: "inherit", cursor: "pointer",
+                appearance: "none", WebkitAppearance: "none",
+                transition: "border-color 0.18s",
+              }}>
+              <option value="score">Sort by Score</option>
+              <option value="cashflow">Sort by Cash Flow</option>
+              <option value="cap">Sort by Cap Rate</option>
+              <option value="coc">Sort by CoC Return</option>
             </select>
           </div>
         )}
 
-        {/* Empty state */}
+        {/* ── Empty state ── */}
         {sorted.length === 0 && (
-          <div style={{ textAlign: "center", padding: "100px 0" }}>
-            <p style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: C.text, marginBottom: 8 }}>
+          <div style={{
+            background: "rgba(255,255,255,0.7)", border: "1.5px dashed #cbd5e1",
+            borderRadius: 20, padding: "72px 32px", textAlign: "center",
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.3 }}>
+              {search ? "🔍" : "🏠"}
+            </div>
+            <p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", marginBottom: 8, letterSpacing: "-0.02em" }}>
               {search ? "No deals match your search" : "No saved deals yet"}
             </p>
-            <p style={{ fontSize: 11, color: C.faint, marginBottom: 36, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              {search ? "Try a different search term" : "Analyze a property and save it to see it here"}
+            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+              {search ? "Try a different search term." : "Analyze a property, then save it to your dashboard to see it here."}
             </p>
-            {!search && <PillBtn onClick={onAnalyze}>Analyze a Deal</PillBtn>}
+            {!search && (
+              <button onClick={onAnalyze}
+                style={{
+                  padding: "12px 28px", border: "none", borderRadius: 12,
+                  background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+                  color: "#fff", fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                  boxShadow: "0 4px 14px rgba(37,99,235,0.3)",
+                }}>
+                Analyze a Deal →
+              </button>
+            )}
           </div>
         )}
 
-        {/* Deal cards */}
+        {/* ── Deal cards grid ── */}
         {sorted.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 1, background: C.rule }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
             {sorted.map(d => {
-              const sc = d.score >= 70 ? C.green : d.score >= 45 ? C.amber : C.red;
+              const sc = d.score >= 70 ? "#059669" : d.score >= 45 ? "#d97706" : "#dc2626";
               const isDeleting = deleteConfirm === d.id;
+              const isSelected = selected.has(d.id);
               const savedDate = d.savedAt
                 ? new Date(d.savedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                 : null;
 
               return (
-                <div key={d.id} style={{ background: C.bg, display: "flex", flexDirection: "column" }}>
+                <div key={d.id} style={{
+                  background: "rgba(255,255,255,0.92)", display: "flex", flexDirection: "column",
+                  border: isSelected ? "2px solid #2563eb" : "1px solid #e2e8f0",
+                  borderRadius: 20, overflow: "hidden",
+                  boxShadow: isSelected
+                    ? "0 0 0 4px rgba(37,99,235,0.12), 0 4px 16px rgba(15,23,42,0.06)"
+                    : "0 1px 3px rgba(15,23,42,0.04), 0 4px 16px rgba(15,23,42,0.04)",
+                  transition: "box-shadow 0.2s, border-color 0.2s, transform 0.2s",
+                }}
+                  onMouseEnter={e => { if (!isDeleting) (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "none"; }}
+                >
+                  {/* Score accent bar */}
+                  <div style={{ height: 4, background: sc, flexShrink: 0 }} />
+
                   {/* Card body */}
-                  <div style={{ padding: "28px 24px 20px", flex: 1 }}>
-                    {/* Top row: label + selection checkbox */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                  <div style={{ padding: "20px 22px 16px", flex: 1 }}>
+                    {/* Top row: score chip + checkbox */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
                       <ScoreChip label={d.label} />
                       <input
                         type="checkbox"
-                        title="Select deal"
-                        checked={selected.has(d.id)}
+                        title="Select for comparison or bulk delete"
+                        checked={isSelected}
                         onChange={() => toggleSelect(d.id)}
-                        style={{ accentColor: C.text, cursor: "pointer", width: 13, height: 13, marginTop: 2 }}
+                        style={{ accentColor: "#2563eb", cursor: "pointer", width: 15, height: 15, marginTop: 2, flexShrink: 0 }}
                       />
                     </div>
 
-                    {/* Address */}
-                    <p style={{ fontSize: 15, fontWeight: 500, color: C.text, letterSpacing: "-0.02em", marginBottom: 3, lineHeight: 1.3 }}>
+                    {/* Address hierarchy */}
+                    <p style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em", marginBottom: 2, lineHeight: 1.25 }}>
                       {d.address.split(",")[0]}
                     </p>
                     {d.address.includes(",") && (
-                      <p style={{ fontSize: 11, color: C.faint, marginBottom: 4 }}>
+                      <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 12 }}>
                         {d.address.split(",").slice(1).join(",").trim()}
                       </p>
                     )}
-                    <p style={{ fontSize: 10, color: C.faint, letterSpacing: "0.05em", marginBottom: 20, textTransform: "uppercase" }}>
+                    <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 16, fontVariantNumeric: "tabular-nums" }}>
                       {fmt(d.price)} · {d.rate}% · {d.term}yr
                     </p>
 
-                    {/* 3 key metrics */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 0, borderTop: `1px solid ${C.rule}`, paddingTop: 16, marginBottom: 16 }}>
-                      <div style={{ borderRight: `1px solid ${C.rule}`, paddingRight: 8 }}>
-                        <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>Cash Flow</p>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: d.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>
-                          {fmtSigned(d.cashflow)}<span style={{ fontSize: 9, fontWeight: 400 }}>/mo</span>
-                        </p>
-                      </div>
-                      <div style={{ borderRight: `1px solid ${C.rule}`, padding: "0 8px", textAlign: "center" }}>
-                        <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>Cap Rate</p>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{d.capRate.toFixed(1)}%</p>
-                      </div>
-                      <div style={{ paddingLeft: 8, textAlign: "right" }}>
-                        <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>Score</p>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: sc, fontVariantNumeric: "tabular-nums" }}>{d.score}</p>
-                      </div>
+                    {/* 3 metric tiles */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                      {[
+                        { label: "Cash Flow", value: fmtSigned(d.cashflow) + "/mo", color: d.cashflow >= 0 ? "#059669" : "#dc2626" },
+                        { label: "Cap Rate",  value: d.capRate.toFixed(1) + "%",    color: "#0f172a" },
+                        { label: "Score",     value: String(d.score),               color: sc },
+                      ].map(m => (
+                        <div key={m.label} style={{
+                          background: "#f8fafc", borderRadius: 10, padding: "10px 8px",
+                          textAlign: "center", border: "1px solid #f1f5f9",
+                        }}>
+                          <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>{m.label}</p>
+                          <p style={{ fontSize: 13, fontWeight: 800, color: m.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{m.value}</p>
+                        </div>
+                      ))}
                     </div>
 
+                    {/* Mini income vs expenses chart — only when rent data exists */}
+                    {d.effectiveRent > 0 && (
+                      <MiniBarChart income={d.effectiveRent} expenses={d.totalMonthly} />
+                    )}
+
                     {savedDate && (
-                      <p style={{ fontSize: 10, color: C.faint, fontStyle: "italic" }}>Saved {savedDate}</p>
+                      <p style={{ fontSize: 10, color: "#94a3b8" }}>Saved {savedDate}</p>
                     )}
                   </div>
 
-                  {/* Card actions */}
+                  {/* Card actions footer */}
                   {!isDeleting ? (
-                    <div style={{ display: "flex", borderTop: `1px solid ${C.rule}` }}>
+                    <div style={{ display: "flex", borderTop: "1px solid #f1f5f9" }}>
                       <button
                         onClick={() => setViewDeal(d)}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                        style={{ flex: 1, padding: "12px 0", background: "transparent", border: "none", borderRight: `1px solid ${C.rule}`, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, color: C.text, cursor: "pointer", fontFamily: "inherit", transition: "background 0.1s" }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#eff6ff"; (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+                        style={{
+                          flex: 1, padding: "13px 0", background: "transparent", border: "none",
+                          borderRight: "1px solid #f1f5f9", fontSize: 12, fontWeight: 700,
+                          color: "#0f172a", cursor: "pointer", fontFamily: "inherit",
+                          transition: "all 0.15s", letterSpacing: "0.02em",
+                        }}
                       >
-                        View
+                        View Details
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(d.id)}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#fdf0ef"; (e.currentTarget as HTMLElement).style.color = C.red; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.faint; }}
-                        style={{ flex: 1, padding: "12px 0", background: "transparent", border: "none", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, color: C.faint, cursor: "pointer", fontFamily: "inherit", transition: "all 0.1s" }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#fff1f2"; (e.currentTarget as HTMLElement).style.color = "#dc2626"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                        style={{
+                          flex: 1, padding: "13px 0", background: "transparent", border: "none",
+                          fontSize: 12, fontWeight: 600, color: "#94a3b8",
+                          cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                        }}
                       >
                         Delete
                       </button>
                     </div>
                   ) : (
-                    <div style={{ borderTop: `1px solid ${C.rule}`, padding: "12px 16px", background: "#fdf0ef", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <p style={{ fontSize: 11, color: C.red }}>Delete this deal?</p>
+                    <div style={{
+                      borderTop: "1px solid #fecdd3", padding: "12px 16px",
+                      background: "#fff1f2", display: "flex",
+                      alignItems: "center", justifyContent: "space-between", gap: 8,
+                    }}>
+                      <p style={{ fontSize: 12, color: "#dc2626", fontWeight: 500 }}>Delete this deal?</p>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button
                           onClick={() => setDeleteConfirm(null)}
-                          style={{ padding: "5px 12px", background: "transparent", border: `1px solid ${C.rule}`, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted, cursor: "pointer", fontFamily: "inherit" }}
-                        >
+                          style={{ padding: "5px 12px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, color: "#475569", cursor: "pointer", fontFamily: "inherit" }}>
                           Cancel
                         </button>
                         <button
                           onClick={() => confirmDelete(d.id)}
-                          style={{ padding: "5px 12px", background: C.red, border: "none", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-                        >
+                          style={{ padding: "5px 12px", background: "#dc2626", border: "none", borderRadius: 7, fontSize: 11, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                           Delete
                         </button>
                       </div>
