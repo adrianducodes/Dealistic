@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Fragment } from "react";
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 const LS_SESSION = "dealistic_session";   // { email, name, loginAt }
@@ -67,7 +67,7 @@ interface AnalysisResult {
 }
 interface SavedDeal extends DealInput, DealResult { id: number; saved: boolean; savedAt?: string; userEmail?: string; }
 
-type Page = "landing" | "analyzer" | "dashboard" | "compare";
+type Page = "landing" | "analyzer" | "dashboard";
 type AuthPage = "login" | "signup" | "account";
 type Mode = "manual" | "csv";
 type SortKey = "score" | "cashflow" | "cap" | "coc";
@@ -4769,14 +4769,11 @@ function DealDetailModal({ deal, onClose }: { deal: SavedDeal; onClose: () => vo
 }
 
 // ─── DashboardPage ─────────────────────────────────────────────────────────────
-function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, compareIds, onToggleCompare, user, onOpenLogin }: {
+function DashboardPage({ deals, onDelete, onDeleteAll, onAnalyze, user, onOpenLogin }: {
   deals: SavedDeal[];
   onDelete: (id: number) => void;
   onDeleteAll: (ids: number[]) => void;
-  onCompare: () => void;
   onAnalyze: () => void;
-  compareIds: number[];
-  onToggleCompare: (id: number, checked: boolean) => void;
   user: AuthUser | null;
   onOpenLogin: () => void;
 }) {
@@ -4786,6 +4783,7 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const sorted = [...deals]
     .filter(d => d.address.toLowerCase().includes(search.toLowerCase()))
@@ -4868,6 +4866,14 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
       {/* Detail modal */}
       {viewDeal && <DealDetailModal deal={viewDeal} onClose={() => setViewDeal(null)} />}
 
+      {/* Compare modal — launched from bulk action bar */}
+      {compareOpen && selected.size >= 2 && (
+        <CompareModal
+          deals={deals.filter(d => selected.has(d.id)).slice(0, 4)}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
+
       {/* ── Header — matches Analyzer header style ── */}
       <div style={{ borderBottom: "1px solid #e2e8f0", background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)" }}>
         <div style={{ maxWidth: 1260, margin: "0 auto", padding: "clamp(16px,2.5vw,28px) clamp(16px,3vw,40px)" }}>
@@ -4906,6 +4912,7 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
             background: "rgba(255,255,255,0.92)", border: "1px solid #e2e8f0",
             borderRadius: 12, flexWrap: "wrap", gap: 10,
           }}>
+            {/* Left: select-all + count badge */}
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
                 <input
@@ -4924,60 +4931,62 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
                 </span>
               )}
             </div>
-            {selected.size > 0 && (
-              !deleteAllConfirm ? (
-                <button
-                  onClick={() => setDeleteAllConfirm(true)}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#dc2626"; (e.currentTarget as HTMLElement).style.color = "#dc2626"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
-                  style={{ fontSize: 12, background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, transition: "all 0.15s" }}
-                >
-                  Delete {selected.size} Deal{selected.size !== 1 ? "s" : ""}
-                </button>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 500 }}>Delete {selected.size} deal{selected.size !== 1 ? "s" : ""}?</span>
-                  <button onClick={deleteSelected}
-                    style={{ fontSize: 12, background: "#dc2626", border: "none", borderRadius: 8, color: "#fff", padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>
-                    Confirm
-                  </button>
-                  <button onClick={() => setDeleteAllConfirm(false)}
-                    style={{ fontSize: 12, background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", padding: "6px 12px", cursor: "pointer", fontFamily: "inherit" }}>
-                    Cancel
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        )}
 
-        {/* ── Compare bar ── */}
-        {compareIds.length >= 2 && (
-          <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            background: "linear-gradient(135deg,#eff6ff,#f0fdf4)", border: "1px solid #bfdbfe",
-            borderRadius: 14, padding: "14px 20px", marginBottom: 20, flexWrap: "wrap", gap: 12,
-          }}>
-            <p style={{ fontSize: 13, color: "#1e3a5f", fontWeight: 500 }}>
-              <span style={{ fontWeight: 800 }}>{compareIds.length}</span> deals selected for comparison
-            </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => compareIds.forEach(id => onToggleCompare(id, false))}
-                style={{ background: "#fff", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
-                Clear
-              </button>
-              <button onClick={onCompare}
-                style={{
-                  background: "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff",
-                  border: "none", borderRadius: 8, padding: "7px 20px",
-                  fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-                  boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-                }}>
-                Compare →
-              </button>
+            {/* Right: action buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {/* Compare Selected — primary action, enabled only when ≥2 selected */}
+              {selected.size >= 1 && (
+                <button
+                  onClick={() => { if (selected.size >= 2) setCompareOpen(true); }}
+                  disabled={selected.size < 2}
+                  title={selected.size < 2 ? "Select at least 2 deals to compare" : `Compare ${selected.size} deals`}
+                  style={{
+                    fontSize: 12, fontWeight: 700, padding: "7px 16px", borderRadius: 9,
+                    border: "none", cursor: selected.size >= 2 ? "pointer" : "not-allowed",
+                    fontFamily: "inherit", transition: "all 0.18s",
+                    background: selected.size >= 2
+                      ? "linear-gradient(135deg,#2563eb,#0ea5e9)"
+                      : "#e2e8f0",
+                    color: selected.size >= 2 ? "#fff" : "#94a3b8",
+                    boxShadow: selected.size >= 2 ? "0 2px 8px rgba(37,99,235,0.25)" : "none",
+                  }}
+                  onMouseEnter={e => { if (selected.size >= 2) (e.currentTarget as HTMLElement).style.opacity = "0.88"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                >
+                  {selected.size >= 2 ? `Compare ${selected.size} Deals ↗` : "Select 2+ to Compare"}
+                </button>
+              )}
+
+              {/* Delete selected */}
+              {selected.size > 0 && (
+                !deleteAllConfirm ? (
+                  <button
+                    onClick={() => setDeleteAllConfirm(true)}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#dc2626"; (e.currentTarget as HTMLElement).style.color = "#dc2626"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+                    style={{ fontSize: 12, background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, transition: "all 0.15s" }}
+                  >
+                    Delete {selected.size}
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 500 }}>Delete {selected.size} deal{selected.size !== 1 ? "s" : ""}?</span>
+                    <button onClick={deleteSelected}
+                      style={{ fontSize: 12, background: "#dc2626", border: "none", borderRadius: 8, color: "#fff", padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>
+                      Confirm
+                    </button>
+                    <button onClick={() => setDeleteAllConfirm(false)}
+                      style={{ fontSize: 12, background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", padding: "6px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+                      Cancel
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           </div>
         )}
+
+
 
         {/* ── Search + Sort toolbar ── */}
         {deals.length > 0 && (
@@ -5188,212 +5197,270 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
   );
 }
 
-// ─── ComparePage ──────────────────────────────────────────────────────────────
+// ─── CompareModal — inline modal, launched from My Deals ─────────────────────
 type HighlightDir = "higher" | "lower" | "none";
 
 interface CompareRow {
   label: string;
-  group?: string;
+  group: string;
   getValue: (d: SavedDeal) => number;
   render: (d: SavedDeal) => string;
-  highlight: HighlightDir; // "higher" = best is highest, "lower" = best is lowest
-  format?: "currency" | "percent" | "number";
+  highlight: HighlightDir;
 }
 
-function ComparePage({ deals, onBack }: { deals: SavedDeal[]; onBack: () => void }) {
+function CompareModal({ deals, onClose }: { deals: SavedDeal[]; onClose: () => void }) {
   const rows: CompareRow[] = [
-    // Investment returns
-    { label: "Deal Score",          group: "Returns",   getValue: d => d.score,        render: d => String(d.score) + " / 100",  highlight: "higher" },
-    { label: "Monthly Cash Flow",   group: "Returns",   getValue: d => d.cashflow,     render: d => fmtSigned(d.cashflow) + "/mo", highlight: "higher" },
-    { label: "Annual Cash Flow",    group: "Returns",   getValue: d => d.annualCashflow, render: d => fmtSigned(d.annualCashflow) + "/yr", highlight: "higher" },
-    { label: "Cash-on-Cash Return", group: "Returns",   getValue: d => d.coc,          render: d => d.coc.toFixed(2) + "%",      highlight: "higher" },
-    { label: "Cap Rate",            group: "Returns",   getValue: d => d.capRate,      render: d => d.capRate.toFixed(2) + "%",  highlight: "higher" },
-    { label: "DSCR",                group: "Returns",   getValue: d => d.dscr,         render: d => d.dscr.toFixed(2),           highlight: "higher" },
-    // Income
-    { label: "Monthly Rent",        group: "Income",    getValue: d => d.rent,         render: d => d.rent > 0 ? fmt(d.rent) : "—", highlight: "higher" },
-    { label: "Effective Rent",      group: "Income",    getValue: d => d.effectiveRent, render: d => fmt(d.effectiveRent),       highlight: "higher" },
-    { label: "Vacancy Rate",        group: "Income",    getValue: d => d.vacancy,      render: d => d.vacancy + "%",             highlight: "lower" },
-    // Costs
-    { label: "Purchase Price",      group: "Property",  getValue: d => d.price,        render: d => fmt(d.price),               highlight: "lower" },
-    { label: "Down Payment",        group: "Property",  getValue: d => d.down,         render: d => fmt(d.down),                highlight: "none" },
-    { label: "Interest Rate",       group: "Property",  getValue: d => d.rate,         render: d => d.rate + "%",               highlight: "lower" },
-    { label: "Monthly Mortgage",    group: "Costs",     getValue: d => d.mortgage,     render: d => fmt(d.mortgage),            highlight: "lower" },
-    { label: "Total Expenses",      group: "Costs",     getValue: d => d.totalMonthly, render: d => fmt(d.totalMonthly),        highlight: "lower" },
+    { label: "Deal Score",          group: "Returns",  getValue: d => d.score,          render: d => d.score + " / 100",          highlight: "higher" },
+    { label: "Monthly Cash Flow",   group: "Returns",  getValue: d => d.cashflow,        render: d => fmtSigned(d.cashflow) + "/mo", highlight: "higher" },
+    { label: "Cash-on-Cash Return", group: "Returns",  getValue: d => d.coc,             render: d => d.coc.toFixed(2) + "%",      highlight: "higher" },
+    { label: "Cap Rate",            group: "Returns",  getValue: d => d.capRate,         render: d => d.capRate.toFixed(2) + "%",  highlight: "higher" },
+    { label: "DSCR",                group: "Returns",  getValue: d => d.dscr,            render: d => d.dscr.toFixed(2),           highlight: "higher" },
+    { label: "Annual Cash Flow",    group: "Returns",  getValue: d => d.annualCashflow,  render: d => fmtSigned(d.annualCashflow) + "/yr", highlight: "higher" },
+    { label: "Monthly Rent",        group: "Income",   getValue: d => d.rent,            render: d => d.rent > 0 ? fmt(d.rent) : "—", highlight: "higher" },
+    { label: "Effective Rent",      group: "Income",   getValue: d => d.effectiveRent,   render: d => fmt(d.effectiveRent),        highlight: "higher" },
+    { label: "Vacancy Rate",        group: "Income",   getValue: d => d.vacancy,         render: d => d.vacancy + "%",             highlight: "lower"  },
+    { label: "Purchase Price",      group: "Property", getValue: d => d.price,           render: d => fmt(d.price),                highlight: "lower"  },
+    { label: "Down Payment",        group: "Property", getValue: d => d.down,            render: d => fmt(d.down),                 highlight: "none"   },
+    { label: "Interest Rate",       group: "Property", getValue: d => d.rate,            render: d => d.rate + "%",                highlight: "lower"  },
+    { label: "Monthly Mortgage",    group: "Costs",    getValue: d => d.mortgage,        render: d => fmt(d.mortgage),             highlight: "lower"  },
+    { label: "Total Expenses",      group: "Costs",    getValue: d => d.totalMonthly,    render: d => fmt(d.totalMonthly),         highlight: "lower"  },
+    { label: "State Adjustment",    group: "Market",   getValue: d => d.stateAdj ?? 0,  render: d => (d.stateAdj ?? 0) > 0 ? "+" + (d.stateAdj ?? 0) + " pts" : (d.stateAdj ?? 0) < 0 ? (d.stateAdj ?? 0) + " pts" : "Neutral", highlight: "higher" },
   ];
 
-  // For each row, compute which deal(s) have the best value
+  const groups = ["Returns", "Income", "Property", "Costs", "Market"];
+
   function getBestIds(row: CompareRow): Set<number> {
     if (row.highlight === "none" || deals.length < 2) return new Set();
     const vals = deals.map(d => ({ id: d.id, v: row.getValue(d) }));
     const best = row.highlight === "higher"
       ? Math.max(...vals.map(x => x.v))
       : Math.min(...vals.map(x => x.v));
-    // If all values are equal, no highlight
     if (vals.every(x => x.v === best)) return new Set();
     return new Set(vals.filter(x => x.v === best).map(x => x.id));
   }
 
-  // Group rows
-  const groups = ["Returns", "Income", "Property", "Costs"];
+  const winner    = deals.length >= 2 ? deals.reduce((a, b) => a.score > b.score ? a : b) : null;
+  const bestCF    = deals.length >= 2 ? deals.reduce((a, b) => a.cashflow > b.cashflow ? a : b) : null;
+  const lowestRisk = deals.length >= 2 ? deals.reduce((a, b) => {
+    const riskA = a.score >= 70 ? 0 : a.score >= 45 ? 1 : 2;
+    const riskB = b.score >= 70 ? 0 : b.score >= 45 ? 1 : 2;
+    return riskA <= riskB ? a : b;
+  }) : null;
 
-  // Score winner — highest score
-  const winner = deals.length >= 2 ? deals.reduce((a, b) => a.score > b.score ? a : b) : null;
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", color: C.text }}>
-      {/* Header */}
-      <div style={{ borderBottom: `1px solid ${C.rule}`, padding: "32px 48px" }}>
-        <div style={{ maxWidth: 1300, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+    /* Backdrop */
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 400,
+        background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        padding: "40px 16px 24px", overflowY: "auto",
+      }}
+    >
+      {/* Modal panel */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#fff", width: "100%", maxWidth: 900,
+          borderRadius: 24, overflow: "hidden",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 24px 64px rgba(15,23,42,0.2)",
+          flexShrink: 0,
+        }}
+      >
+        {/* ── Modal header ── */}
+        <div style={{
+          padding: "20px 28px", borderBottom: "1px solid #f1f5f9",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+        }}>
           <div>
-            <h1 style={{ fontSize: 30, fontWeight: 500, letterSpacing: "-0.03em", margin: 0, color: C.text }}>Compare Deals</h1>
-            <p style={{ fontSize: 11, color: C.faint, marginTop: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              {deals.length >= 2 ? `${deals.length} deals · green = best value in column` : "Select 2–4 deals from My Deals"}
+            <p style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 4 }}>
+              Comparing {deals.length} Deals
             </p>
+            <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.03em", color: "#0f172a", margin: 0 }}>
+              Deal Comparison
+            </h2>
           </div>
-          <button onClick={onBack}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.text; (e.currentTarget as HTMLElement).style.borderColor = C.text; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.faint; (e.currentTarget as HTMLElement).style.borderColor = C.rule; }}
-            style={{ background: "transparent", color: C.faint, border: `1px solid ${C.rule}`, padding: "10px 22px", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit", transition: "color 0.12s, border-color 0.12s" }}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>
+              ● = best in row &nbsp;|&nbsp; Esc to close
+            </span>
+            <button
+              onClick={onClose}
+              style={{ background: "#f1f5f9", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 16, color: "#64748b", padding: "7px 11px", transition: "all 0.15s", fontFamily: "inherit", lineHeight: 1 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#e2e8f0"; (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#f1f5f9"; (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+            >×</button>
+          </div>
+        </div>
+
+        {/* ── Deal header cards ── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: `160px repeat(${deals.length}, 1fr)`,
+          gap: 0, padding: "20px 24px 0",
+          background: "#f8fafc", borderBottom: "1px solid #e2e8f0",
+        }}>
+          {/* empty label column header */}
+          <div />
+          {deals.map(d => {
+            const sc = d.score >= 70 ? "#059669" : d.score >= 45 ? "#d97706" : "#dc2626";
+            const isWinner  = winner?.id  === d.id;
+            const isBestCF  = bestCF?.id  === d.id;
+            const isLowest  = lowestRisk?.id === d.id;
+            // build tags
+            const tags: { label: string; color: string; bg: string }[] = [];
+            if (isWinner)  tags.push({ label: "Highest Score",   color: "#059669", bg: "#f0fdf4" });
+            if (isBestCF && !isWinner) tags.push({ label: "Best Cash Flow", color: "#2563eb", bg: "#eff6ff" });
+            if (isLowest && !isWinner) tags.push({ label: "Lowest Risk",    color: "#7c3aed", bg: "#f5f3ff" });
+
+            return (
+              <div key={d.id} style={{
+                padding: "0 12px 20px",
+                borderLeft: "1px solid #e2e8f0",
+                position: "relative",
+              }}>
+                {/* Colored top accent */}
+                <div style={{ height: 3, background: sc, borderRadius: "0 0 3px 3px", marginBottom: 12, marginLeft: -12, marginRight: -12 }} />
+
+                {/* Tags */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8, minHeight: 22 }}>
+                  {tags.map(t => (
+                    <span key={t.label} style={{
+                      fontSize: 9, fontWeight: 800, letterSpacing: "0.08em",
+                      textTransform: "uppercase", color: t.color, background: t.bg,
+                      border: `1px solid ${t.color}30`, borderRadius: 6, padding: "2px 7px",
+                    }}>{t.label}</span>
+                  ))}
+                </div>
+
+                <p style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em", marginBottom: 2, lineHeight: 1.2 }}>
+                  {d.address.split(",")[0]}
+                </p>
+                {d.address.includes(",") && (
+                  <p style={{ fontSize: 10, color: "#94a3b8", marginBottom: 8 }}>
+                    {d.address.split(",").slice(1).join(",").trim()}
+                  </p>
+                )}
+                {/* Score mini meter */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 20, fontWeight: 900, color: sc, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.04em" }}>
+                    {d.score}
+                  </span>
+                  <div style={{ flex: 1, height: 4, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 999, width: d.score + "%",
+                      background: d.score >= 70 ? "linear-gradient(90deg,#059669,#10b981)" : d.score >= 45 ? "linear-gradient(90deg,#d97706,#f59e0b)" : "linear-gradient(90deg,#dc2626,#ef4444)"
+                    }} />
+                  </div>
+                </div>
+                <p style={{ fontSize: 10, color: sc, fontWeight: 700 }}>{d.label}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Comparison table ── */}
+        <div style={{ overflowX: "auto", padding: "0 24px 24px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", minWidth: 480 }}>
+            <colgroup>
+              <col style={{ width: 160 }} />
+              {deals.map(d => <col key={d.id} />)}
+            </colgroup>
+            <tbody>
+              {groups.map(group => {
+                const groupRows = rows.filter(r => r.group === group);
+                if (groupRows.length === 0) return null;
+                return (
+                  <Fragment key={group}>
+                    <tr>
+                      <td colSpan={deals.length + 1} style={{ padding: "16px 0 6px" }}>
+                        <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>
+                          {group}
+                        </span>
+                      </td>
+                    </tr>
+                    {groupRows.map((row, ri) => {
+                      const bestIds = getBestIds(row);
+                      const isLast = ri === groupRows.length - 1;
+                      return (
+                        <tr key={row.label}
+                          style={{ borderBottom: isLast ? "2px solid #f1f5f9" : "1px solid #f8fafc", transition: "background 0.1s" }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        >
+                          <td style={{ padding: "11px 12px 11px 0", fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                            {row.label}
+                          </td>
+                          {deals.map(d => {
+                            const isBest = bestIds.has(d.id);
+                            const val = row.getValue(d);
+                            let textColor = "#0f172a";
+                            if (isBest) textColor = "#059669";
+                            else if (row.label.includes("Cash Flow") && val < 0) textColor = "#dc2626";
+                            else if (row.label === "DSCR" && val < 1) textColor = "#dc2626";
+                            else if (row.label === "State Adjustment") textColor = val > 0 ? "#059669" : val < 0 ? "#dc2626" : "#94a3b8";
+                            return (
+                              <td key={d.id} style={{ padding: "11px 0 11px 16px", borderLeft: "1px solid #f1f5f9" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  {isBest && (
+                                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", flexShrink: 0 }} />
+                                  )}
+                                  <span style={{
+                                    fontSize: 13, fontWeight: isBest ? 800 : 500,
+                                    color: textColor, fontVariantNumeric: "tabular-nums",
+                                  }}>
+                                    {row.render(d)}
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── Footer ── */}
+        <div style={{
+          padding: "14px 24px", borderTop: "1px solid #f1f5f9",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "#f8fafc",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "#64748b" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", display: "inline-block" }} />
+              Best value in row
+            </span>
+            <span style={{ fontSize: 10, color: "#cbd5e1" }}>·</span>
+            <span style={{ fontSize: 10, color: "#94a3b8" }}>Green = higher is better · Cost metrics: lower is better</span>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 20px", border: "1px solid #e2e8f0", borderRadius: 9,
+              background: "#fff", color: "#475569", fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#94a3b8"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; }}
           >
-            ← My Deals
+            Close
           </button>
         </div>
       </div>
-
-      {deals.length < 2 ? (
-        <div style={{ textAlign: "center", padding: "140px 48px" }}>
-          <p style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: C.text, marginBottom: 10 }}>No deals selected</p>
-          <p style={{ fontSize: 13, color: C.muted, marginBottom: 32 }}>Go to My Deals, check the box on 2–4 cards, then click Compare.</p>
-          <PillBtn onClick={onBack}>Go to My Deals</PillBtn>
-        </div>
-      ) : (
-        <div style={{ maxWidth: 1300, margin: "0 auto", padding: "40px 48px" }}>
-
-          {/* Winner banner */}
-          {winner && (
-            <div style={{ marginBottom: 36, padding: "16px 24px", background: "#f0f8f4", border: `1px solid ${C.green}`, display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ width: 3, height: 40, background: C.green, flexShrink: 0 }} />
-              <div>
-                <p style={{ fontSize: 9, color: C.green, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700, marginBottom: 3 }}>Best Deal</p>
-                <p style={{ fontSize: 14, fontWeight: 500, color: C.text }}>
-                  {winner.address.split(",")[0]}
-                  <span style={{ fontSize: 12, color: C.muted, fontWeight: 400, marginLeft: 10 }}>
-                    Score {winner.score} · {fmtSigned(winner.cashflow)}/mo · {winner.capRate.toFixed(1)}% cap rate
-                  </span>
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Comparison table */}
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-              <colgroup>
-                <col style={{ width: 180 }} />
-                {deals.map(d => <col key={d.id} />)}
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={{ padding: "0 0 16px", textAlign: "left" }} />
-                  {deals.map(d => {
-                    const isWinner = winner?.id === d.id;
-                    const sc = d.score >= 70 ? C.green : d.score >= 45 ? C.amber : C.red;
-                    return (
-                      <th key={d.id} style={{ padding: "0 0 16px 20px", textAlign: "left", verticalAlign: "bottom" }}>
-                        <div style={{ borderTop: `3px solid ${isWinner ? C.green : C.rule}`, paddingTop: 12 }}>
-                          {isWinner && (
-                            <span style={{ fontSize: 9, color: C.green, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, display: "block", marginBottom: 4 }}>Best</span>
-                          )}
-                          <p style={{ fontSize: 13, fontWeight: 600, color: C.text, letterSpacing: "-0.015em", marginBottom: 2 }}>
-                            {d.address.split(",")[0]}
-                          </p>
-                          {d.address.includes(",") && (
-                            <p style={{ fontSize: 10, color: C.faint, marginBottom: 6 }}>
-                              {d.address.split(",").slice(1).join(",").trim()}
-                            </p>
-                          )}
-                          <span style={{ fontSize: 11, fontWeight: 600, color: sc }}>
-                            {d.label} · {d.score}/100
-                          </span>
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map(group => {
-                  const groupRows = rows.filter(r => r.group === group);
-                  return (
-                    <>
-                      {/* Group header row */}
-                      <tr key={group + "_header"}>
-                        <td colSpan={deals.length + 1} style={{ padding: "20px 0 8px", borderBottom: `1px solid ${C.rule}` }}>
-                          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 600 }}>{group}</p>
-                        </td>
-                      </tr>
-
-                      {/* Data rows */}
-                      {groupRows.map(row => {
-                        const bestIds = getBestIds(row);
-                        return (
-                          <tr key={row.label}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                            style={{ borderBottom: `1px solid ${C.rule}`, transition: "background 0.1s" }}
-                          >
-                            <td style={{ padding: "13px 16px 13px 0", fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", verticalAlign: "middle" }}>
-                              {row.label}
-                            </td>
-                            {deals.map(d => {
-                              const isBest = bestIds.has(d.id);
-                              const val = row.getValue(d);
-                              // Absolute color: red for negative cashflow/coc regardless of "best"
-                              let textColor = C.text;
-                              if (isBest) textColor = C.green;
-                              else if (row.label.includes("Cash Flow") && val < 0) textColor = C.red;
-                              else if (row.label === "DSCR" && val < 1) textColor = C.red;
-
-                              return (
-                                <td key={d.id} style={{ padding: "13px 0 13px 20px", verticalAlign: "middle" }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                                    {isBest && (
-                                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, flexShrink: 0, display: "inline-block" }} />
-                                    )}
-                                    <span style={{
-                                      fontSize: 14, fontWeight: isBest ? 600 : 500,
-                                      color: textColor,
-                                      fontVariantNumeric: "tabular-nums",
-                                    }}>
-                                      {row.render(d)}
-                                    </span>
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Legend */}
-          <div style={{ marginTop: 32, display: "flex", alignItems: "center", gap: 20, paddingTop: 20, borderTop: `1px solid ${C.rule}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-              <span style={{ fontSize: 10, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase" }}>Best value in row</span>
-            </div>
-            <span style={{ fontSize: 10, color: C.rule }}>·</span>
-            <span style={{ fontSize: 10, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Green = higher is better · Lower is better for cost metrics
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -5641,7 +5708,7 @@ function AccountPage({
           {[
             { label: "Analyzer", action: () => onNavigate("analyzer") },
             { label: "My Deals", action: () => onNavigate("dashboard") },
-            { label: "Compare", action: () => onNavigate("compare") },
+            
           ].map((item, i, arr) => (
             <button
               key={item.label}
@@ -5716,7 +5783,7 @@ export default function Dealistic() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [deals, setDeals] = useState<SavedDeal[]>([]);
-  const [compareIds, setCompareIds] = useState<number[]>([]);
+
 
   // ── Restore session + deals on mount ────────────────────────────────────
   useEffect(() => {
@@ -5775,15 +5842,6 @@ export default function Dealistic() {
     });
   }, []);
 
-  const toggleCompare = useCallback((id: number, checked: boolean) => {
-    setCompareIds(prev => {
-      if (checked) {
-        if (prev.length >= 4) { alert("Max 4 deals for comparison"); return prev; }
-        return [...prev, id];
-      }
-      return prev.filter(x => x !== id);
-    });
-  }, []);
 
   const navigate = (p: Page) => { setPage(p); setAuthPage(null); setMenuOpen(false); window.scrollTo(0, 0); };
   const openAuth = (ap: AuthPage) => { setAuthPage(ap); setMenuOpen(false); window.scrollTo(0, 0); };
@@ -6044,7 +6102,7 @@ export default function Dealistic() {
             </button>
           </div>
           <nav style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"], ["compare", "Compare"]] as [Page, string][]).map(([p, label]) => (
+            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"]] as [Page, string][]).map(([p, label]) => (
               <button
                 key={p}
                 onClick={() => navigate(p)}
@@ -6095,17 +6153,12 @@ export default function Dealistic() {
               deals={deals}
               onDelete={deleteDeal}
               onDeleteAll={deleteManyDeals}
-              onCompare={() => navigate("compare")}
               onAnalyze={() => navigate("analyzer")}
-              compareIds={compareIds}
-              onToggleCompare={toggleCompare}
               user={user}
               onOpenLogin={() => openAuth("login")}
             />
           )}
-          {page === "compare" && (
-            <ComparePage deals={deals.filter(d => compareIds.includes(d.id))} onBack={() => navigate("dashboard")} />
-          )}
+
         </div>
       )}
     </div>
