@@ -1883,33 +1883,85 @@ function FadeIn({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 }
 
 // Stat card
-function StatCard({ num, label }: { num: string; label: string }) {
+// ── Upgraded StatCard with count-up and sub-label ───────────────────────────
+function StatCard({
+  numStr, numEnd, prefix = "", suffix = "", sub, delay = 0,
+}: {
+  numStr?: string;      // static display (e.g. "∞")
+  numEnd?: number;      // count-up target (e.g. 12)
+  prefix?: string;      // e.g. "" 
+  suffix?: string;      // e.g. "s", "+", ""
+  sub: string;
+  delay?: number;
+}) {
+  const { ref, visible } = useInView(0.3);
+  const [count, setCount] = useState(0);
   const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    if (!visible || numEnd === undefined) return;
+    let start = 0;
+    // Ease: fast at start, slow at end
+    const duration = 900;
+    const startTime = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.round(eased * numEnd));
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    const id = setTimeout(() => requestAnimationFrame(tick), delay * 1000);
+    return () => clearTimeout(id);
+  }, [visible, numEnd, delay]);
+
+  const display = numStr ?? `${prefix}${count}${suffix}`;
+
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: hovered ? C.text : C.bg,
-        border: `1px solid ${C.rule}`,
-        borderRadius: 20,
-        padding: "36px 32px",
-        transition: "background 0.25s, transform 0.2s",
-        transform: hovered ? "translateY(-4px)" : "none",
-        cursor: "default",
-      }}
-    >
-      <p style={{ fontSize: "clamp(38px,4vw,56px)", fontWeight: 600, letterSpacing: "-0.045em", margin: 0, lineHeight: 1, color: hovered ? "#fff" : C.text }}>
-        {num}
-      </p>
-      <p style={{ fontSize: 11, color: hovered ? "rgba(255,255,255,0.6)" : C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 10 }}>
-        {label}
-      </p>
-    </div>
+    <FadeIn delay={delay}>
+      <div
+        ref={ref}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          background: hovered ? C.text : C.bg,
+          border: `1px solid ${hovered ? C.text : C.rule}`,
+          borderRadius: 22,
+          padding: "32px 28px",
+          transition: "background 0.25s, transform 0.22s, border-color 0.22s, box-shadow 0.22s",
+          transform: hovered ? "translateY(-5px)" : "none",
+          boxShadow: hovered ? "0 12px 36px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.04)",
+          cursor: "default",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Subtle shimmer on hover */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: 22,
+          background: "linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 60%)",
+          opacity: hovered ? 1 : 0, transition: "opacity 0.3s", pointerEvents: "none",
+        }} />
+
+        <p style={{
+          fontSize: "clamp(36px,3.5vw,52px)", fontWeight: 800,
+          letterSpacing: "-0.05em", margin: "0 0 10px",
+          lineHeight: 1, color: hovered ? "#fff" : C.text,
+          fontVariantNumeric: "tabular-nums",
+        }}>
+          {display}
+        </p>
+        <div style={{ width: 24, height: 2, background: hovered ? "rgba(255,255,255,0.3)" : C.rule, borderRadius: 1, marginBottom: 12 }} />
+        <p style={{ fontSize: 12, color: hovered ? "rgba(255,255,255,0.65)" : C.muted, lineHeight: 1.6, margin: 0 }}>
+          {sub}
+        </p>
+      </div>
+    </FadeIn>
   );
 }
 
-// Feature card
+// ── Feature card (kept, still referenced elsewhere) ───────────────────────────
 function FeatureCard({ icon, title, desc, delay = 0 }: { icon: string; title: string; desc: string; delay?: number }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -1938,18 +1990,404 @@ function FeatureCard({ icon, title, desc, delay = 0 }: { icon: string; title: st
   );
 }
 
-// How-it-works step
-function Step({ n, title, desc, delay = 0 }: { n: string; title: string; desc: string; delay?: number }) {
+// ── Step mini-visuals — enriched with more motion and richer data ────────────
+
+// Shared: a glowing "active" pulse dot
+function PulseDot({ color }: { color: string }) {
+  return (
+    <span style={{ position: "relative", display: "inline-flex", width: 8, height: 8, flexShrink: 0 }}>
+      <span style={{
+        position: "absolute", inset: 0, borderRadius: "50%", background: color,
+        animation: "pulse-ring 1.8s ease-out infinite", opacity: 0.4,
+      }} />
+      <span style={{ position: "relative", width: 8, height: 8, borderRadius: "50%", background: color }} />
+      <style>{`@keyframes pulse-ring { 0%{transform:scale(1);opacity:.4} 70%{transform:scale(2.4);opacity:0} 100%{transform:scale(2.4);opacity:0} }`}</style>
+    </span>
+  );
+}
+
+// ── Visual 01: Typewriter URL → address card → fields fill sequentially ──────
+function StepVisual01() {
+  const { ref, visible } = useInView(0.25);
+  // phase: 0=idle 1=typing-url 2=address-revealed 3=fields-filling
+  const [phase, setPhase] = useState(0);
+  const [typed, setTyped] = useState("");
+  const fullUrl = "zillow.com/homedetails/8901-Maple-Dr-Austin-TX";
+
+  // Drive the phase sequence once visible
+  useEffect(() => {
+    if (!visible || phase !== 0) return;
+    setPhase(1);
+  }, [visible, phase]);
+
+  useEffect(() => {
+    if (phase !== 1) return;
+    let i = 0;
+    const iv = setInterval(() => {
+      i++;
+      setTyped(fullUrl.slice(0, i));
+      if (i >= fullUrl.length) { clearInterval(iv); setTimeout(() => setPhase(2), 350); }
+    }, 30);
+    return () => clearInterval(iv);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 2) return;
+    const t = setTimeout(() => setPhase(3), 500);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  const fields = [
+    { label: "Address",        value: "8901 Maple Dr, Austin TX",  delay: 0,    accent: false },
+    { label: "Purchase Price", value: "$389,000",                  delay: 0.15, accent: false },
+    { label: "Monthly Rent",   value: "$2,950",                    delay: 0.30, accent: true  },
+    { label: "Interest Rate",  value: "6.875%",                    delay: 0.45, accent: false },
+    { label: "Down Payment",   value: "$77,800  (20%)",            delay: 0.60, accent: false },
+  ];
+
+  return (
+    <div ref={ref} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      {/* URL input bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        background: C.bg, border: `2px solid ${phase >= 2 ? C.green : C.rule}`,
+        borderRadius: 10, padding: "8px 12px",
+        transition: "border-color 0.4s, box-shadow 0.4s",
+        boxShadow: phase >= 2 ? `0 0 0 3px ${C.green}18` : "none",
+      }}>
+        <span style={{ fontSize: 13 }}>🔗</span>
+        <span style={{ fontSize: 10, fontFamily: "monospace", flex: 1, color: phase >= 2 ? C.text : C.muted,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {typed || <span style={{ color: C.faint, fontStyle: "italic" }}>Paste a Zillow or Redfin link…</span>}
+          {phase === 1 && (
+            <span style={{ display: "inline-block", width: 2, height: 11, background: C.text,
+              verticalAlign: "middle", marginLeft: 1, animation: "blink-cur 0.9s step-start infinite" }} />
+          )}
+        </span>
+        {phase >= 2 && (
+          <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.1em",
+            background: C.green, color: "#fff", borderRadius: 999, padding: "2px 8px", flexShrink: 0 }}>FOUND</span>
+        )}
+      </div>
+
+      <style>{`@keyframes blink-cur { 0%,100%{opacity:1} 50%{opacity:0} }`}</style>
+
+      {/* Address chip appears first */}
+      <div style={{
+        opacity: phase >= 2 ? 1 : 0,
+        transform: phase >= 2 ? "none" : "translateY(8px)",
+        transition: "opacity 0.4s, transform 0.4s",
+        display: "flex", alignItems: "center", gap: 8,
+        background: "#e8f5ef", border: `1px solid ${C.green}40`,
+        borderRadius: 10, padding: "9px 12px",
+      }}>
+        <PulseDot color={C.green} />
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#1a5a34" }}>8901 Maple Dr, Austin TX 78759</span>
+      </div>
+
+      {/* Fields fill in sequentially */}
+      {fields.slice(1).map((f, i) => (
+        <div key={i} style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: C.bg, border: `1px solid ${f.accent ? C.green + "60" : C.rule}`,
+          borderRadius: 9, padding: "8px 12px",
+          opacity: phase === 3 ? 1 : 0,
+          transform: phase === 3 ? "none" : "translateX(-12px)",
+          transition: `opacity 0.38s ease ${f.delay}s, transform 0.38s ease ${f.delay}s, border-color 0.3s`,
+        }}>
+          <span style={{ fontSize: 10, color: C.faint, letterSpacing: "0.04em" }}>{f.label}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: f.accent ? C.green : C.text }}>{f.value}</span>
+        </div>
+      ))}
+
+      {/* "or upload CSV" pill */}
+      <div style={{
+        opacity: phase === 3 ? 1 : 0,
+        transition: "opacity 0.4s ease 0.8s",
+        display: "flex", gap: 6,
+      }}>
+        {["or upload a CSV", "or enter manually"].map(t => (
+          <span key={t} style={{ fontSize: 9, color: "#4a6cf7",
+            background: "#eef0ff", border: "1px solid #c8d0f0",
+            borderRadius: 999, padding: "3px 9px", fontWeight: 600 }}>{t}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual 02: Mortgage breakdown bar + metric tiles counting up ──────────────
+function StepVisual02() {
+  const { ref, visible } = useInView(0.25);
+  const [counts, setCounts] = useState([0, 0, 0, 0]);
+  const [barW, setBarW] = useState(0);
+  const targets = [295, 71, 132, 96]; // cashflow, cap×10, DSCR×100, CoC×10
+
+  useEffect(() => {
+    if (!visible) return;
+    // Stagger bar then tiles
+    const bTimer = setTimeout(() => setBarW(100), 100);
+    targets.forEach((target, idx) => {
+      const delay = 300 + idx * 110;
+      const tRef = { id: 0 };
+      const start = setTimeout(() => {
+        let n = 0;
+        tRef.id = window.setInterval(() => {
+          n = Math.min(n + Math.ceil(target / 28), target);
+          setCounts(prev => { const nx = [...prev]; nx[idx] = n; return nx; });
+          if (n >= target) clearInterval(tRef.id);
+        }, 28);
+      }, delay);
+      // capture for cleanup
+      return () => { clearTimeout(start); clearInterval(tRef.id); };
+    });
+    return () => clearTimeout(bTimer);
+  }, [visible]);
+
+  // Mortgage breakdown bar segments
+  const segments = [
+    { label: "Mortgage", pct: 68, color: "#4a6cf7" },
+    { label: "Tax/Ins",  pct: 17, color: C.amber   },
+    { label: "Mgmt",     pct: 8,  color: C.muted   },
+    { label: "Flow",     pct: 7,  color: C.green    },
+  ];
+
+  const metrics = [
+    { label: "Cash Flow",    val: `+$${counts[0]}/mo`,               color: C.green },
+    { label: "Cap Rate",     val: `${(counts[1]/10).toFixed(1)}%`,    color: "#4a6cf7" },
+    { label: "DSCR",         val: `${(counts[2]/100).toFixed(2)}`,    color: C.text },
+    { label: "Cash-on-Cash", val: `${(counts[3]/10).toFixed(1)}%`,   color: C.amber },
+  ];
+
+  return (
+    <div ref={ref} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Rent input summary */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+        background: C.bg, borderRadius: 10, padding: "10px 14px", border: `1px solid ${C.rule}` }}>
+        <span style={{ fontSize: 11, color: C.muted }}>$389,000 · 20% down · 6.875% · 30yr</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#4a6cf7" }}>calculating…</span>
+      </div>
+
+      {/* Stacked bar — where does rent $2,950 go? */}
+      <div>
+        <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>
+          Where your $2,950 rent goes
+        </p>
+        <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", background: C.rule, gap: 1 }}>
+          {segments.map((s, i) => (
+            <div key={i} style={{
+              background: s.color, height: "100%",
+              width: visible ? `${(s.pct / 100) * barW}%` : "0%",
+              transition: `width 0.9s cubic-bezier(.22,1,.36,1) ${i * 0.07}s`,
+              flexShrink: 0,
+            }} />
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 12, marginTop: 7, flexWrap: "wrap" }}>
+          {segments.map((s, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: C.muted }}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color, display: "inline-block" }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 4 metric tiles */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {metrics.map((m, i) => (
+          <div key={i} style={{
+            background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 12,
+            padding: "12px 13px",
+            opacity: visible ? 1 : 0,
+            transform: visible ? "none" : "translateY(10px)",
+            transition: `opacity 0.4s ease ${0.3 + i * 0.1}s, transform 0.4s ease ${0.3 + i * 0.1}s`,
+          }}>
+            <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>{m.label}</p>
+            <p style={{ fontSize: 20, fontWeight: 900, color: m.color, letterSpacing: "-0.04em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{m.val}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual 03: Score gauge + progressive verdict reveal ───────────────────────
+function StepVisual03() {
+  const { ref, visible } = useInView(0.25);
+  const [score, setScore] = useState(0);
+  const [showVerdict, setShowVerdict] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    let n = 0;
+    const iv = setInterval(() => {
+      n = Math.min(n + 2, 82);
+      setScore(n);
+      if (n >= 82) { clearInterval(iv); setTimeout(() => setShowVerdict(true), 200); }
+    }, 15);
+    return () => clearInterval(iv);
+  }, [visible]);
+
+  const radius = 46;
+  const circ   = 2 * Math.PI * radius;
+  const filled = (score / 100) * circ;
+  const scoreColor = score >= 70 ? C.green : score >= 45 ? C.amber : C.red;
+
+  // Scorecard breakdown rows
+  const rows: { label: string; val: string; delta: "good" | "ok" | "warn" }[] = [
+    { label: "Rent-to-price ratio",  val: "0.76%",  delta: "good" },
+    { label: "Monthly cash flow",    val: "+$295",   delta: "good" },
+    { label: "Cap rate",             val: "7.1%",    delta: "ok"   },
+    { label: "Rehab estimate",       val: "$14,000", delta: "warn" },
+  ];
+  const deltaColor = (d: string) => d === "good" ? C.green : d === "ok" ? "#4a6cf7" : C.amber;
+  const deltaIcon  = (d: string) => d === "good" ? "↑" : d === "ok" ? "→" : "!";
+
+  return (
+    <div ref={ref}>
+      {/* Gauge + headline side by side */}
+      <div style={{ display: "flex", gap: 20, alignItems: "center", marginBottom: 14 }}>
+        {/* SVG gauge */}
+        <div style={{ position: "relative", width: 104, height: 104, flexShrink: 0 }}>
+          <svg width="104" height="104" style={{ transform: "rotate(-90deg)" }}>
+            <circle cx="52" cy="52" r={radius} fill="none" stroke={C.rule} strokeWidth="9" />
+            <circle cx="52" cy="52" r={radius} fill="none" stroke={scoreColor} strokeWidth="9"
+              strokeDasharray={`${filled} ${circ - filled}`} strokeLinecap="round"
+              style={{ transition: "stroke-dasharray 0.04s linear, stroke 0.3s ease" }}
+            />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 28, fontWeight: 900, color: scoreColor,
+              letterSpacing: "-0.06em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{score}</span>
+            <span style={{ fontSize: 9, color: C.faint, letterSpacing: "0.06em" }}>/ 100</span>
+          </div>
+        </div>
+
+        {/* Verdict text */}
+        <div style={{ flex: 1 }}>
+          <div style={{
+            opacity: showVerdict ? 1 : 0, transform: showVerdict ? "none" : "translateY(6px)",
+            transition: "opacity 0.5s, transform 0.5s",
+          }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 8,
+              background: "#e8f5ef", border: `1px solid ${C.green}40`, borderRadius: 8, padding: "4px 10px" }}>
+              <PulseDot color={C.green} />
+              <span style={{ fontSize: 10, fontWeight: 800, color: C.green, letterSpacing: "0.06em" }}>GREAT DEAL</span>
+            </div>
+            <p style={{ fontSize: 12, color: C.text, fontWeight: 600, lineHeight: 1.4, margin: 0 }}>
+              Strong cash-flowing rental.
+            </p>
+            <p style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginTop: 3 }}>
+              Watch the rehab budget — it narrows your margin.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Score breakdown table */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 9, padding: "8px 12px",
+            opacity: showVerdict ? 1 : 0,
+            transform: showVerdict ? "none" : "translateX(10px)",
+            transition: `opacity 0.35s ease ${i * 0.08}s, transform 0.35s ease ${i * 0.08}s`,
+          }}>
+            <span style={{ fontSize: 11, color: C.muted }}>{r.label}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{r.val}</span>
+              <span style={{
+                fontSize: 9, fontWeight: 800,
+                background: deltaColor(r.delta) + "18", color: deltaColor(r.delta),
+                border: `1px solid ${deltaColor(r.delta)}40`,
+                borderRadius: 999, padding: "1px 6px", width: 16, textAlign: "center",
+              }}>{deltaIcon(r.delta)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Redesigned Step card ──────────────────────────────────────────────────────
+function Step({
+  n, stepColor, title, desc, bullets, visual, delay = 0,
+}: {
+  n: string; stepColor: string; title: string; desc: string;
+  bullets: string[]; visual: React.ReactNode; delay?: number;
+}) {
+  const [hov, setHov] = useState(false);
   return (
     <FadeIn delay={delay}>
-      <div style={{ borderTop: `2px solid ${C.text}`, paddingTop: 24 }}>
-        <p style={{ fontSize: 11, color: C.faint, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 28, fontWeight: 500 }}>{n}</p>
-        <p style={{ fontSize: 22, fontWeight: 600, color: C.text, letterSpacing: "-0.025em", marginBottom: 14, lineHeight: 1.2 }}>{title}</p>
-        <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.75 }}>{desc}</p>
+      <div
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={{
+          background: C.bg,
+          border: `1px solid ${hov ? "#b8b5ae" : C.rule}`,
+          borderRadius: 24,
+          overflow: "hidden",
+          display: "flex", flexDirection: "column",
+          height: "100%",
+          transition: "box-shadow 0.22s, transform 0.22s, border-color 0.22s",
+          boxShadow: hov
+            ? "0 20px 56px rgba(0,0,0,0.11), 0 4px 16px rgba(0,0,0,0.06)"
+            : "0 2px 10px rgba(0,0,0,0.045)",
+          transform: hov ? "translateY(-6px)" : "none",
+        }}
+      >
+        {/* Coloured top accent line */}
+        <div style={{ height: 3, background: stepColor, flexShrink: 0 }} />
+
+        {/* Visual demo area */}
+        <div style={{
+          background: `linear-gradient(158deg, ${C.bg2} 0%, #e0dcd5 100%)`,
+          padding: "24px 22px 20px", flexShrink: 0,
+        }}>
+          {visual}
+        </div>
+
+        {/* Text block */}
+        <div style={{ padding: "20px 24px 26px", flex: 1, display: "flex", flexDirection: "column" }}>
+          {/* Step number badge */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
+              background: stepColor + "18", color: stepColor,
+              border: `1px solid ${stepColor}40`,
+              borderRadius: 6, padding: "3px 9px",
+            }}>{n}</span>
+            <div style={{ flex: 1, height: 1, background: C.rule }} />
+          </div>
+
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: "-0.02em",
+            marginBottom: 8, lineHeight: 1.3 }}>{title}</p>
+          <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, marginBottom: 14 }}>{desc}</p>
+
+          {/* Bullet list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: "auto" }}>
+            {bullets.map((b, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                <span style={{
+                  width: 16, height: 16, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+                  background: stepColor + "18", display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <span style={{ fontSize: 8, fontWeight: 900, color: stepColor }}>✓</span>
+                </span>
+                <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.55 }}>{b}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </FadeIn>
   );
 }
+
 
 function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
   const [ctaHovered, setCtaHovered] = useState(false);
@@ -1958,13 +2396,21 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
     <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "inherit" }}>
 
       {/* ── HERO ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "80px 40px 64px", textAlign: "center" }}>
-        {/* Eyebrow */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "72px 40px 60px", textAlign: "center" }}>
+
+        {/* Brand wordmark */}
         <FadeIn>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 999, padding: "6px 16px", marginBottom: 36 }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-            <span style={{ fontSize: 11, color: C.muted, letterSpacing: "0.06em" }}>Real estate deal analysis — 2026</span>
-          </div>
+          <p style={{
+            fontSize: "clamp(15px,1.8vw,18px)",
+            fontWeight: 800,
+            letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            color: C.text,
+            marginBottom: 40,
+            fontFamily: "inherit",
+          }}>
+            Dealistic
+          </p>
         </FadeIn>
 
         {/* Headline */}
@@ -2042,33 +2488,83 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
 
       {/* ── STATS ROW ── */}
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "72px 40px" }}>
-        <FadeIn>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
-            {[
-              { num: "2.4s",  label: "Analysis time" },
-              { num: "12+",   label: "Metrics calculated" },
-              { num: "100",   label: "Deal score scale" },
-              { num: "∞",     label: "Deals supported" },
-            ].map(s => <StatCard key={s.label} {...s} />)}
-          </div>
-        </FadeIn>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 40px 80px" }}>
-        <FadeIn>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 52 }}>
-            <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, fontWeight: 500 }}>How it works</p>
-            <span style={{ fontSize: 11, color: C.faint, letterSpacing: "0.08em" }}>01 — 03</span>
-          </div>
-        </FadeIn>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 40 }}>
-          <Step n="01" title="Enter details" desc="Purchase price, loan terms, rental income, expenses. Or upload a CSV for multiple deals at once." delay={0} />
-          <Step n="02" title="Instant analysis" desc="Cash flow, cap rate, DSCR, CoC return — calculated in real time with full breakdowns." delay={0.1} />
-          <Step n="03" title="Get your score" desc="Every property scores 1–100. Great Deal, Average, or Risky — with a plain-language explanation." delay={0.2} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+          <StatCard numEnd={24} suffix="s" sub="Average time to calculate every rental metric for a deal" delay={0} />
+          <StatCard numEnd={12} suffix="+" sub="Cash flow, cap rate, DSCR, CoC return, NOI, LTV, and more" delay={0.08} />
+          <StatCard numEnd={100} sub="Complex math turned into one clear verdict — from 1 to 100" delay={0.16} />
+          <StatCard numStr="∞" sub="Analyze one deal or bulk-upload dozens via CSV at once" delay={0.24} />
         </div>
       </section>
 
+      {/* ── HOW IT WORKS ── */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 40px 96px" }}>
+
+        {/* Section header */}
+        <FadeIn>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 48 }}>
+            <div>
+              <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 12 }}>How it works</p>
+              <h2 style={{ fontSize: "clamp(26px,3vw,42px)", fontWeight: 800, letterSpacing: "-0.038em", color: C.text, lineHeight: 1.08, margin: 0 }}>
+                From listing to verdict<br />in three steps.
+              </h2>
+            </div>
+            {/* Progression dots */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 4 }}>
+              {["#4a6cf7", C.green, C.amber].map((col, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: col + "18",
+                    border: `2px solid ${col}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: col }}>0{i + 1}</span>
+                  </div>
+                  {i < 2 && <div style={{ width: 20, height: 1.5, background: C.rule }} />}
+                </div>
+              ))}
+            </div>
+          </div>
+        </FadeIn>
+
+        {/* Three step cards — equal height */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "stretch" }}>
+          <Step
+            n="01" stepColor="#4a6cf7" delay={0}
+            title="Enter your property details"
+            desc="Paste a listing link, upload a CSV, or fill in a few numbers. You don't need everything — Dealistic fills in smart defaults for anything you skip."
+            bullets={[
+              "Purchase price + financing terms",
+              "Monthly rent you expect to collect",
+              "Taxes, insurance, HOA, repairs, management",
+              "Paste a Zillow or Redfin URL to auto-fill",
+              "Upload a CSV to analyze dozens at once",
+            ]}
+            visual={<StepVisual01 />}
+          />
+          <Step
+            n="02" stepColor={C.green} delay={0.12}
+            title="See every metric, instantly"
+            desc="No spreadsheets, no formulas. Dealistic calculates everything in real time and shows you exactly where your money goes each month."
+            bullets={[
+              "Monthly cash flow after all expenses",
+              "Cap rate, cash-on-cash return, NOI",
+              "DSCR — does rent cover the mortgage?",
+              "Stacked breakdown: mortgage vs. tax vs. flow",
+              "Annual projections with vacancy factored in",
+            ]}
+            visual={<StepVisual02 />}
+          />
+          <Step
+            n="03" stepColor={C.amber} delay={0.24}
+            title="Get your deal score"
+            desc="Every deal gets a score from 1–100. Dealistic explains the verdict in plain language — what's working, what to watch, and why."
+            bullets={[
+              "Score from 1–100 with a clear verdict",
+              "Plain-language breakdown of every factor",
+              "Strengths and watchouts called out explicitly",
+              "Save to dashboard or compare side by side",
+            ]}
+            visual={<StepVisual03 />}
+          />
+        </div>
+      </section>
       {/* ── SHOWCASE SECTION ── */}
       <ShowcaseSection />
 
