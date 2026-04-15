@@ -2157,6 +2157,253 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
   );
 }
 
+// ─── CSV types, constants, and parsing layer ─────────────────────────────────
+
+type CsvField =
+  | "address" | "purchase_price" | "monthly_rent" | "down_payment"
+  | "interest_rate" | "loan_term" | "vacancy_rate" | "taxes"
+  | "insurance" | "hoa" | "repairs" | "management" | "other" | "ignore";
+
+type ColType = "numeric" | "text" | "mixed" | "empty";
+
+interface CsvFieldDef {
+  key: CsvField;
+  label: string;
+  required?: boolean;
+  unit?: string;
+  defaultVal?: string | ((row: Record<string,string>, price: number, rent: number) => string);
+}
+
+interface DatasetAnalysis {
+  isMarketDataset: boolean;
+  dateColCount: number;
+  marketSignals: string[];
+}
+
+interface CsvParsed {
+  headers: string[];
+  usableHeaders: string[];
+  rows: Record<string, string>[];
+  mapping: Record<string, CsvField>;
+  confidence: Record<string, "high" | "medium" | "low">;
+  colTypes: Record<string, ColType>;
+  dataset: DatasetAnalysis;
+  warnings: string[];
+}
+
+const CSV_FIELDS: CsvFieldDef[] = [
+  { key: "address",        label: "Address",        required: true },
+  { key: "purchase_price", label: "Purchase Price",  required: true },
+  { key: "monthly_rent",   label: "Monthly Rent" },
+  { key: "down_payment",   label: "Down Payment",    defaultVal: (_, price) => String(Math.round(price * 0.2)) },
+  { key: "interest_rate",  label: "Interest Rate",   defaultVal: "6.5" },
+  { key: "loan_term",      label: "Loan Term (yrs)", defaultVal: "30" },
+  { key: "vacancy_rate",   label: "Vacancy Rate %",  defaultVal: "5" },
+  { key: "taxes",          label: "Monthly Taxes",   defaultVal: (_, price) => String(Math.round(price * 0.012 / 12)) },
+  { key: "insurance",      label: "Insurance/mo",    defaultVal: (_, price) => String(Math.round(price * 0.0065 / 12)) },
+  { key: "hoa",            label: "HOA/mo",          defaultVal: "0" },
+  { key: "repairs",        label: "Repairs/mo",      defaultVal: (_, __, rent) => String(Math.round(rent * 0.05)) },
+  { key: "management",     label: "Management/mo",   defaultVal: (_, __, rent) => String(Math.round(rent * 0.08)) },
+  { key: "other",          label: "Other/mo",        defaultVal: "0" },
+];
+
+const NUMERIC_FIELDS: CsvField[] = [
+  "purchase_price","monthly_rent","down_payment","interest_rate","loan_term",
+  "vacancy_rate","taxes","insurance","hoa","repairs","management","other",
+];
+
+function isNoiseColumn(header: string): boolean {
+  const h = header.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (/^\d{4}\d{2}\d{2}$/.test(h)) return true;
+  if (/^\d{4}[-/]\d{2}/.test(header.trim())) return true;
+  if (/^\d{4}q\d$/i.test(header.trim())) return true;
+  const noiseExact = new Set(["regionid","sizerank","regionname","regiontype","statename",
+    "metro","countyname","msaid","country","cbsa","cbsatitle"]);
+  if (noiseExact.has(h)) return true;
+  return false;
+}
+
+function classifyColumn(header: string, rows: Record<string, string>[]): ColType {
+  const vals = rows.slice(0, 10).map(r => (r[header] ?? "").trim()).filter(v => v !== "");
+  if (vals.length === 0) return "empty";
+  const numericCount = vals.filter(v => !isNaN(Number(v.replace(/[$,%]/g, "")))).length;
+  if (numericCount === vals.length) return "numeric";
+  if (numericCount === 0) return "text";
+  return "mixed";
+}
+
+function analyzeDataset(headers: string[], rows: Record<string, string>[]): DatasetAnalysis {
+  const dateColCount = headers.filter(h => /^\d{4}[-/]\d{2}/.test(h.trim())).length;
+  const marketSignals: string[] = [];
+  if (dateColCount >= 3) marketSignals.push(`${dateColCount} date columns detected (e.g. 2000-01-31)`);
+  const hasRegionId = headers.some(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g,"") === "regionid");
+  const hasSizeRank = headers.some(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g,"") === "sizerank");
+  if (hasRegionId) marketSignals.push("RegionID column found");
+  if (hasSizeRank) marketSignals.push("SizeRank column found");
+  const usable = headers.filter(h => !isNoiseColumn(h));
+  const hasNumericCol = usable.some(h => classifyColumn(h, rows) === "numeric");
+  if (!hasNumericCol && usable.length > 0) marketSignals.push("No numeric columns found");
+  return { isMarketDataset: marketSignals.length >= 2, dateColCount, marketSignals };
+}
+
+const AUTOMAP_TIERS: Record<CsvField, { high: string[]; medium: string[] }> = {
+  address:        { high: ["address","property address"], medium: ["location","street","addr","property name"] },
+  purchase_price: { high: ["purchase_price","purchase price","list price","asking price"], medium: ["price","cost","sale price","property price","value"] },
+  monthly_rent:   { high: ["monthly_rent","monthly rent","rental income"], medium: ["rent","gross rent","monthly income","income"] },
+  down_payment:   { high: ["down_payment","down payment","downpayment"], medium: ["down","deposit","equity down"] },
+  interest_rate:  { high: ["interest_rate","interest rate","mortgage rate"], medium: ["rate","apr","int rate"] },
+  loan_term:      { high: ["loan_term","loan term","amortization period"], medium: ["term","loan years","years"] },
+  vacancy_rate:   { high: ["vacancy_rate","vacancy rate","vacancy"], medium: ["vacancy %","vacancy pct","empty rate"] },
+  taxes:          { high: ["taxes","property taxes","property tax"], medium: ["tax","annual tax","monthly tax"] },
+  insurance:      { high: ["insurance","landlord insurance","homeowners insurance"], medium: ["ins","property insurance"] },
+  hoa:            { high: ["hoa","hoa fees","hoa fee"], medium: ["homeowners association","monthly hoa","association fee"] },
+  repairs:        { high: ["repairs","repair costs","maintenance"], medium: ["capex","capital expenditure","repairs & maintenance"] },
+  management:     { high: ["management","property management","management fee"], medium: ["pm","mgmt","prop mgmt"] },
+  other:          { high: ["other","other expenses","other costs"], medium: ["misc","miscellaneous"] },
+  ignore:         { high: [], medium: [] },
+};
+
+function autoMapWithConfidence(
+  header: string, colType: ColType, usedFields: Set<CsvField>
+): { field: CsvField; confidence: "high" | "medium" | "low" } {
+  const clean = header.trim().toLowerCase().replace(/[^a-z0-9 _]/g, "");
+  for (const [field, tiers] of Object.entries(AUTOMAP_TIERS) as [CsvField, { high: string[]; medium: string[] }][]) {
+    if (field === "ignore") continue;
+    if (usedFields.has(field)) continue;
+    if (NUMERIC_FIELDS.includes(field) && colType === "text") continue;
+    if (tiers.high.some(s => s === clean || clean === s.replace(/ /g, "_"))) {
+      return { field, confidence: "high" };
+    }
+  }
+  for (const [field, tiers] of Object.entries(AUTOMAP_TIERS) as [CsvField, { high: string[]; medium: string[] }][]) {
+    if (field === "ignore") continue;
+    if (usedFields.has(field)) continue;
+    if (NUMERIC_FIELDS.includes(field) && colType !== "numeric") continue;
+    if (tiers.medium.some(s => s === clean || clean.includes(s))) {
+      return { field, confidence: "medium" };
+    }
+  }
+  return { field: "ignore", confidence: "low" };
+}
+
+function autoMapHeaders(
+  headers: string[], rows: Record<string, string>[]
+): { mapping: Record<string, CsvField>; confidence: Record<string, "high" | "medium" | "low"> } {
+  const mapping: Record<string, CsvField> = {};
+  const confidence: Record<string, "high" | "medium" | "low"> = {};
+  const usedFields = new Set<CsvField>();
+  headers.forEach(h => {
+    if (isNoiseColumn(h)) { mapping[h] = "ignore"; confidence[h] = "high"; return; }
+    const colType = classifyColumn(h, rows);
+    const result = autoMapWithConfidence(h, colType, usedFields);
+    mapping[h] = result.field;
+    confidence[h] = result.confidence;
+    if (result.field !== "ignore") usedFields.add(result.field);
+  });
+  return { mapping, confidence };
+}
+
+function parseCsvText(text: string): CsvParsed | { error: string } {
+  // Handle both CRLF and LF
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length === 0) return { error: "The file appears to be empty." };
+  if (lines.length < 2) return { error: "CSV needs at least a header row and one data row." };
+
+  // Parse quoted CSV properly
+  function parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (ch === "," && !inQuotes) {
+        result.push(current.trim()); current = "";
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  if (headers.length < 2) return { error: "Only one column detected. Make sure the file uses commas as separators." };
+
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseCsvLine(lines[i]);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => { row[h] = vals[idx] ?? ""; });
+    if (Object.values(row).some(v => v !== "")) rows.push(row);
+  }
+  if (rows.length === 0) return { error: "No data rows found after the header." };
+
+  const dataset = analyzeDataset(headers, rows);
+  const usableHeaders = headers.filter(h => !isNoiseColumn(h));
+  const colTypes: Record<string, ColType> = {};
+  headers.forEach(h => { colTypes[h] = classifyColumn(h, rows); });
+
+  const { mapping, confidence } = autoMapHeaders(headers, rows);
+
+  const warnings: string[] = [];
+  if (!Object.values(mapping).includes("purchase_price")) {
+    warnings.push("Could not auto-detect a Purchase Price column — please map it below.");
+  }
+  return { headers, usableHeaders, rows, mapping, confidence, colTypes, dataset, warnings };
+}
+
+function applyMapping(
+  rows: Record<string, string>[],
+  mapping: Record<string, CsvField>,
+  colTypes?: Record<string, ColType>
+): DealInput[] {
+  // Build safe mapping — strip text→numeric invalid assignments
+  const safeMapping: Record<string, CsvField> = {};
+  Object.entries(mapping).forEach(([h, field]) => {
+    if (colTypes && NUMERIC_FIELDS.includes(field) && colTypes[h] === "text") {
+      safeMapping[h] = "ignore";
+    } else {
+      safeMapping[h] = field;
+    }
+  });
+
+  return rows.map((row, i) => {
+    const get = (field: CsvField) => {
+      const col = Object.entries(safeMapping).find(([, f]) => f === field)?.[0];
+      return col ? (row[col] ?? "") : "";
+    };
+    const price = pf(get("purchase_price"));
+    const rent  = pf(get("monthly_rent"));
+
+    const resolve = (field: CsvField, def: CsvFieldDef) => {
+      const raw = get(field);
+      if (raw !== "") return pf(raw);
+      if (typeof def.defaultVal === "function") return pf(String(def.defaultVal(row, price, rent)));
+      return pf(def.defaultVal ?? "0");
+    };
+
+    const F = (key: CsvField) => CSV_FIELDS.find(f => f.key === key)!;
+    return {
+      address:   get("address") || `Property ${i + 1}`,
+      price,
+      rent,
+      down:      resolve("down_payment",  F("down_payment")),
+      rate:      resolve("interest_rate", F("interest_rate")),
+      term:      resolve("loan_term",     F("loan_term")),
+      vacancy:   resolve("vacancy_rate",  F("vacancy_rate")),
+      taxes:     resolve("taxes",         F("taxes")),
+      insurance: resolve("insurance",     F("insurance")),
+      hoa:       resolve("hoa",           F("hoa")),
+      repairs:   resolve("repairs",       F("repairs")),
+      mgmt:      resolve("management",    F("management")),
+      other:     resolve("other",         F("other")),
+    };
+  }).filter(d => d.price > 0);
+}
+
 // ─── AnalyzerPage ─────────────────────────────────────────────────────────────
 // ─── CsvMappingUI ─────────────────────────────────────────────────────────────
 interface CsvMappingUIProps {
