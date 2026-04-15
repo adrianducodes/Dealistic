@@ -890,7 +890,8 @@ interface ParsedProperty {
   address?: string; price?: number; bedrooms?: number; bathrooms?: number;
   sqft?: number; propertyType?: string; yearBuilt?: number; rent?: number;
   source?: string; confidence?: "high" | "medium" | "low";
-  warnings?: string[]; error?: string;
+  rawUrl?: string; warnings?: string[]; error?: string;
+  debugInfo?: string[];
 }
 
 // Site-specific human-friendly messages (no mention of "403", "blocked", "bot")
@@ -1189,13 +1190,13 @@ function PropertyUrlBar({ onAutofill }: { onAutofill: (data: ParsedProperty) => 
               <p style={{ fontSize: 10, color: C.amber, marginTop: 10, lineHeight: 1.5 }}>⚠ {result.warnings[0]}</p>
             )}
 
-            {(result as ParsedProperty & { debugInfo?: string[] }).debugInfo && (
+            {result.debugInfo && (
               <details style={{ marginTop: 10 }}>
                 <summary style={{ fontSize: 10, color: C.faint, cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase" }}>
                   Debug info
                 </summary>
                 <div style={{ marginTop: 6, padding: "8px 10px", background: C.bg2, borderRadius: 5, fontSize: 10, color: C.muted, lineHeight: 1.7, fontFamily: "monospace" }}>
-                  {(result as ParsedProperty & { debugInfo?: string[] }).debugInfo!.map((l, i) => <div key={i}>{l}</div>)}
+                  {result.debugInfo!.map((l, i) => <div key={i}>{l}</div>)}
                 </div>
               </details>
             )}
