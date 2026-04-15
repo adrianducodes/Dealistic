@@ -2396,40 +2396,48 @@ function FadeIn({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 }
 
 // Stat card
-// ── Upgraded StatCard with count-up and sub-label ───────────────────────────
+// ── Premium StatCard — Stripe / Apple level ───────────────────────────────────
 function StatCard({
-  numStr, numEnd, prefix = "", suffix = "", sub, delay = 0,
+  numStr, numEnd, suffix = "", label, icon, sub,
+  accent = "#2563eb", delay = 0,
 }: {
-  numStr?: string;      // static display (e.g. "∞")
-  numEnd?: number;      // count-up target (e.g. 12)
-  prefix?: string;      // e.g. "" 
-  suffix?: string;      // e.g. "s", "+", ""
-  sub: string;
+  numStr?: string;    // static symbol shown smaller as icon (e.g. "∞")
+  numEnd?: number;    // count-up target
+  suffix?: string;    // appended after count (e.g. "+")
+  label?: string;     // primary display text (overrides count / numStr)
+  icon?: string;      // small supporting symbol shown beneath label
+  sub: string;        // description line
+  accent?: string;    // per-card accent color
   delay?: number;
 }) {
-  const { ref, visible } = useInView(0.3);
+  const { ref, visible } = useInView(0.25);
   const [count, setCount] = useState(0);
   const [hovered, setHovered] = useState(false);
 
+  // Count-up animation
   useEffect(() => {
     if (!visible || numEnd === undefined) return;
-    let start = 0;
-    // Ease: fast at start, slow at end
-    const duration = 900;
+    const duration = 1000;
     const startTime = performance.now();
-    const tick = () => {
-      const elapsed = performance.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.round(eased * numEnd));
-      if (progress < 1) requestAnimationFrame(tick);
-    };
-    const id = setTimeout(() => requestAnimationFrame(tick), delay * 1000);
+    const id = setTimeout(() => {
+      const tick = () => {
+        const p = Math.min((performance.now() - startTime) / duration, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setCount(Math.round(eased * numEnd));
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, delay * 1000);
     return () => clearTimeout(id);
   }, [visible, numEnd, delay]);
 
-  const display = numStr ?? `${prefix}${count}${suffix}`;
+  // Derive accent variants
+  const accentRGB = accent === "#2563eb" ? "37,99,235"
+    : accent === "#7c3aed" ? "124,58,237"
+    : accent === "#059669" ? "5,150,105"
+    : "234,88,12"; // orange fallback
+
+  const display = label ?? (numEnd !== undefined ? `${count}${suffix}` : undefined);
 
   return (
     <FadeIn delay={delay}>
@@ -2438,36 +2446,97 @@ function StatCard({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          background: hovered ? `linear-gradient(135deg, ${C.blue}, ${C.accent})` : "rgba(255,255,255,0.8)",
-          border: `1px solid ${hovered ? "transparent" : C.rule}`,
-          borderRadius: 22,
-          padding: "32px 28px",
-          backdropFilter: "blur(8px)",
-          transition: "background 0.25s, transform 0.22s, border-color 0.22s, box-shadow 0.22s",
-          transform: hovered ? "translateY(-5px)" : "none",
-          boxShadow: hovered ? "0 16px 40px rgba(37,99,235,0.25)" : "0 2px 12px rgba(14,165,233,0.08)",
+          position: "relative", overflow: "hidden",
+          // Resting: soft white with a barely-there tinted gradient
+          background: hovered
+            ? `linear-gradient(148deg, ${accent} 0%, ${accent}cc 100%)`
+            : `linear-gradient(160deg, #ffffff 0%, ${accent}08 100%)`,
+          border: hovered
+            ? `1.5px solid ${accent}60`
+            : "1.5px solid rgba(226,232,240,0.85)",
+          borderRadius: 24,
+          padding: "32px 28px 30px",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          transition: [
+            "background 0.32s ease",
+            "border-color 0.25s ease",
+            "transform 0.26s cubic-bezier(.22,1,.36,1)",
+            "box-shadow 0.26s ease",
+          ].join(", "),
+          transform: hovered ? "translateY(-7px) scale(1.015)" : "translateY(0) scale(1)",
+          boxShadow: hovered
+            ? `0 24px 56px rgba(${accentRGB},0.26), 0 6px 20px rgba(${accentRGB},0.14), inset 0 1px 0 rgba(255,255,255,0.18)`
+            : `0 1px 4px rgba(15,23,42,0.05), 0 6px 20px rgba(${accentRGB},0.07)`,
           cursor: "default",
-          position: "relative",
-          overflow: "hidden",
         }}
       >
-        {/* Subtle shimmer on hover */}
+        {/* Top-edge gloss */}
         <div style={{
-          position: "absolute", inset: 0, borderRadius: 22,
-          background: "linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 60%)",
-          opacity: hovered ? 1 : 0, transition: "opacity 0.3s", pointerEvents: "none",
+          position: "absolute", top: 0, left: 0, right: 0, height: "52%",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 100%)",
+          borderRadius: "24px 24px 0 0", pointerEvents: "none",
+          opacity: hovered ? 1 : 0, transition: "opacity 0.3s",
         }} />
 
+        {/* Accent dot — top-right corner indicator */}
+        <div style={{
+          position: "absolute", top: 18, right: 20,
+          width: 8, height: 8, borderRadius: "50%",
+          background: hovered ? "rgba(255,255,255,0.5)" : accent,
+          opacity: hovered ? 0.7 : 0.5,
+          transition: "background 0.25s, opacity 0.25s",
+          boxShadow: hovered ? "none" : `0 0 8px ${accent}60`,
+        }} />
+
+        {/* Primary display */}
         <p style={{
-          fontSize: "clamp(36px,3.5vw,52px)", fontWeight: 800,
-          letterSpacing: "-0.05em", margin: "0 0 10px",
-          lineHeight: 1, color: hovered ? "#fff" : C.text,
+          fontSize: "clamp(32px,3.4vw,46px)",
+          fontWeight: 900,
+          letterSpacing: "-0.05em",
+          lineHeight: 1,
+          margin: "0 0 4px",
+          color: hovered ? "#ffffff" : "#0f172a",
           fontVariantNumeric: "tabular-nums",
+          transition: "color 0.25s",
         }}>
           {display}
         </p>
-        <div style={{ width: 24, height: 2, background: hovered ? "rgba(255,255,255,0.3)" : C.rule, borderRadius: 1, marginBottom: 12 }} />
-        <p style={{ fontSize: 12, color: hovered ? "rgba(255,255,255,0.65)" : C.muted, lineHeight: 1.6, margin: 0 }}>
+
+        {/* Supporting icon (e.g. ∞ symbol below "Unlimited") */}
+        {icon && (
+          <p style={{
+            fontSize: 18, lineHeight: 1, margin: "0 0 10px",
+            color: hovered ? "rgba(255,255,255,0.6)" : accent,
+            transition: "color 0.25s",
+          }}>{icon}</p>
+        )}
+
+        {/* Animated accent underline */}
+        <div style={{ position: "relative", marginBottom: 16, height: 2.5, width: 40, overflow: "hidden", borderRadius: 99 }}>
+          <div style={{
+            position: "absolute", inset: 0,
+            background: hovered ? "rgba(255,255,255,0.22)" : `${accent}20`,
+            borderRadius: 99, transition: "background 0.25s",
+          }} />
+          <div style={{
+            position: "absolute", top: 0, left: 0, height: "100%",
+            width: hovered ? "100%" : "30%",
+            background: hovered ? "rgba(255,255,255,0.9)" : accent,
+            borderRadius: 99,
+            transition: "width 0.38s cubic-bezier(.22,1,.36,1), background 0.25s",
+          }} />
+        </div>
+
+        {/* Description */}
+        <p style={{
+          fontSize: 12.5,
+          lineHeight: 1.68,
+          margin: 0,
+          color: hovered ? "rgba(255,255,255,0.75)" : "#475569",
+          transition: "color 0.25s",
+          letterSpacing: "0.005em",
+        }}>
           {sub}
         </p>
       </div>
@@ -2929,12 +2998,12 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
         {/* Brand wordmark — primary, dominant, centered */}
         <FadeIn>
           <p style={{
-            fontSize: "clamp(42px,6vw,72px)",
+            fontSize: "clamp(36px,5.2vw,62px)",
             fontWeight: 800,
             letterSpacing: "-0.03em",
             color: C.text,
             lineHeight: 1,
-            margin: "0 auto 32px",
+            margin: "0 auto 28px",
             fontFamily: "inherit",
           }}>
             Dealistic
@@ -2944,16 +3013,16 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
         {/* Headline */}
         <FadeIn delay={0.08}>
           <h1 style={{
-            fontSize: "clamp(28px,4.5vw,56px)",
+            fontSize: "clamp(22px,3.6vw,46px)",
             fontWeight: 500,
-            lineHeight: 1.15,
-            letterSpacing: "-0.03em",
-            margin: "0 auto 28px",
+            lineHeight: 1.2,
+            letterSpacing: "-0.028em",
+            margin: "0 auto 36px",
             background: `linear-gradient(135deg, ${C.text} 0%, ${C.blue} 55%, ${C.green} 100%)`,
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             backgroundClip: "text",
-            maxWidth: 720,
+            maxWidth: 660,
           }}>
             Analyze real estate deals in seconds.
           </h1>
@@ -2961,7 +3030,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
 
         {/* Sub */}
         <FadeIn delay={0.16}>
-          <p style={{ fontSize: "clamp(15px,1.6vw,18px)", color: C.muted, lineHeight: 1.7, maxWidth: 520, margin: "0 auto 44px" }}>
+          <p style={{ fontSize: "clamp(14px,1.5vw,17px)", color: "#334155", lineHeight: 1.75, maxWidth: 500, margin: "0 auto 44px" }}>
             Cash flow, cap rate, CoC return, DSCR — every metric you need to decide fast. Built for investors who move quickly.
           </p>
         </FadeIn>
@@ -3021,10 +3090,31 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
       {/* ── STATS ROW ── */}
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(40px,6vw,72px) clamp(16px,4vw,40px)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-          <StatCard numEnd={24} suffix="s" sub="Average time to calculate every rental metric for a deal" delay={0} />
-          <StatCard numEnd={12} suffix="+" sub="Cash flow, cap rate, DSCR, CoC return, NOI, LTV, and more" delay={0.08} />
-          <StatCard numEnd={100} sub="Complex math turned into one clear verdict — from 1 to 100" delay={0.16} />
-          <StatCard numStr="∞" sub="Analyze one deal or bulk-upload dozens via CSV at once" delay={0.24} />
+          <StatCard
+            label="Instant"
+            sub="Instant analysis of all key rental metrics, from cash flow to DSCR."
+            accent="#2563eb"
+            delay={0}
+          />
+          <StatCard
+            numEnd={12} suffix="+"
+            sub="Cash flow, cap rate, DSCR, CoC return, NOI, LTV, and more — all calculated at once."
+            accent="#7c3aed"
+            delay={0.08}
+          />
+          <StatCard
+            label="Dealistic Score"
+            sub="Our signature 1–100 deal score. Complex math distilled into one clear verdict."
+            accent="#059669"
+            delay={0.16}
+          />
+          <StatCard
+            label="Unlimited"
+            icon="∞"
+            sub="Analyze one deal or thousands at once — no caps, no paywalls on analysis."
+            accent="#ea580c"
+            delay={0.24}
+          />
         </div>
       </section>
 
