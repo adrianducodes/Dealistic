@@ -22,18 +22,25 @@ function lsDel(key: string): void {
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
-  bg:      "#e8e5df",
-  bg2:     "#dedad3",
-  text:    "#1a1a1a",
-  muted:   "#6a6660",
-  faint:   "#9a9690",
-  rule:    "#d0ccc4",
-  blue:    "#1126c8",
-  pill:    "#1e1c1a",
-  pillTxt: "#f0ede8",
-  green:   "#1a7a4a",
-  red:     "#c0392b",
-  amber:   "#a06010",
+  // Base — clean white/light blue-grey, like Clearbit's product UI
+  bg:      "#f0f4ff",       // very light periwinkle white — page background
+  bg2:     "#e4ecff",       // slightly deeper for card surfaces
+  text:    "#0f172a",       // deep navy — strong, trustworthy
+  muted:   "#475569",       // slate — readable secondary text
+  faint:   "#94a3b8",       // light slate — tertiary / hints
+  rule:    "#cbd5e1",       // soft blue-grey border
+  blue:    "#2563eb",       // vibrant Clearbit blue — primary action
+  pill:    "#1e3a5f",       // deep navy pill background
+  pillTxt: "#e0f2fe",       // light sky for pill text
+  green:   "#059669",       // teal-green — positive metrics, success
+  red:     "#dc2626",       // clear red — warnings
+  amber:   "#d97706",       // warm amber — cautions
+  // Extended gradient colors used in hero and CTA
+  gradStart: "#e0f2fe",     // lightest sky blue
+  gradMid:   "#bfdbfe",     // soft blue
+  gradEnd:   "#a7f3d0",     // mint green — the "blue-green-white" theme
+  accent:    "#0ea5e9",     // sky blue — highlights and tags
+  accentGreen: "#10b981",   // emerald — step 02 accent
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -103,10 +110,19 @@ function fmt(n: number): string {
 function fmtSigned(n: number): string {
   return (n >= 0 ? "+" : "-") + fmt(Math.abs(n));
 }
-function pf(s: string): number {
-  const v = parseFloat(s);
+// Parses user-friendly formatted numeric strings into plain numbers.
+// Handles: "$700,000" → 700000 | "6.5%" → 6.5 | "$2,950/mo" → 2950 | "700,000" → 700000
+function parseFormattedNumber(s: unknown): number {
+  if (s === null || s === undefined || s === "") return 0;
+  const str = String(s)
+    .replace(/\$|,|\s|\/mo|\/yr|%/g, "")  // strip currency, commas, spaces, /mo, /yr, %
+    .trim();
+  if (str === "") return 0;
+  const v = parseFloat(str);
   return isNaN(v) ? 0 : v;
 }
+// Short alias used throughout the file
+const pf = parseFormattedNumber;
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 const HR = () => <div style={{ height: 1, background: C.rule, width: "100%" }} />;
@@ -158,19 +174,19 @@ interface SmartFieldProps {
 }
 
 function SmartField({ label, placeholder, prefix, suffix, value, onChange, hint, tooltip, autoLabel }: SmartFieldProps) {
-  const [focused, setFocused] = useState(false);
   const [tipOpen, setTipOpen] = useState(false);
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       {/* Label row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <label style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, fontWeight: 500 }}>
-          {label}
-        </label>
+        <label className="az-label" style={{ margin: 0 }}>{label}</label>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {autoLabel && (
-            <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", background: C.blue, color: "#fff", padding: "2px 7px", fontWeight: 600 }}>
+            <span style={{ fontSize: 9, letterSpacing: "0.07em", textTransform: "uppercase",
+              background: "rgba(37,99,235,0.1)", color: "#2563eb",
+              border: "1px solid rgba(37,99,235,0.2)",
+              padding: "2px 7px", fontWeight: 700, borderRadius: 5 }}>
               {autoLabel}
             </span>
           )}
@@ -179,12 +195,17 @@ function SmartField({ label, placeholder, prefix, suffix, value, onChange, hint,
               <button
                 onMouseEnter={() => setTipOpen(true)}
                 onMouseLeave={() => setTipOpen(false)}
-                style={{ width: 16, height: 16, borderRadius: "50%", border: `1px solid ${C.rule}`, background: "transparent", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", padding: 0 }}
+                style={{ width: 18, height: 18, borderRadius: "50%", border: "1.5px solid #e2e8f0",
+                  background: "#f8fafc", cursor: "default", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontFamily: "inherit", padding: 0 }}
               >
-                <span style={{ fontSize: 9, color: C.faint, fontWeight: 600 }}>?</span>
+                <span style={{ fontSize: 9, color: "#64748b", fontWeight: 700 }}>?</span>
               </button>
               {tipOpen && (
-                <div style={{ position: "absolute", right: 0, top: 22, zIndex: 50, background: C.pill, color: C.pillTxt, fontSize: 11, lineHeight: 1.5, padding: "9px 13px", whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.18)" }}>
+                <div style={{ position: "absolute", right: 0, top: 24, zIndex: 50,
+                  background: "#0f172a", color: "#fff", fontSize: 11, lineHeight: 1.5,
+                  padding: "9px 13px", whiteSpace: "nowrap", pointerEvents: "none",
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.2)", borderRadius: 8 }}>
                   {tooltip}
                 </div>
               )}
@@ -196,7 +217,8 @@ function SmartField({ label, placeholder, prefix, suffix, value, onChange, hint,
       {/* Input */}
       <div style={{ position: "relative" }}>
         {prefix && (
-          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: C.faint, pointerEvents: "none" }}>
+          <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+            fontSize: 13, color: "#94a3b8", pointerEvents: "none", zIndex: 1 }}>
             {prefix}
           </span>
         )}
@@ -205,30 +227,17 @@ function SmartField({ label, placeholder, prefix, suffix, value, onChange, hint,
           placeholder={placeholder}
           value={value}
           onChange={e => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={{
-            width: "100%",
-            background: C.bg2,
-            border: `1px solid ${focused ? C.text : C.rule}`,
-            borderRadius: 0,
-            color: C.text,
-            fontSize: 14,
-            padding: prefix ? "11px 12px 11px 26px" : suffix ? "11px 28px 11px 12px" : "11px 12px",
-            outline: "none",
-            fontFamily: "inherit",
-            transition: "border-color 0.12s",
-            boxSizing: "border-box",
-          }}
+          className={`az-input${prefix ? " az-input-prefix" : ""}${suffix ? " az-input-suffix" : ""}`}
         />
         {suffix && (
-          <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: C.faint, pointerEvents: "none" }}>
+          <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+            fontSize: 13, color: "#94a3b8", pointerEvents: "none" }}>
             {suffix}
           </span>
         )}
       </div>
 
-      {hint && <p style={{ fontSize: 11, color: C.faint, marginTop: 5, lineHeight: 1.45, fontStyle: "italic" }}>{hint}</p>}
+      {hint && <p className="az-hint">{hint}</p>}
     </div>
   );
 }
@@ -753,7 +762,7 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
         </div>
 
         {/* KPI cards — 2×2 grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.rule }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 1, background: C.rule }}>
           {[
             {
               label: "Monthly Cash Flow",
@@ -1251,21 +1260,22 @@ function ShowCard({
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
         style={{
-          background: C.bg,
-          border: `1px solid ${hov ? "#b0b0a8" : C.rule}`,
+          background: "rgba(255,255,255,0.88)",
+          border: `1px solid ${hov ? C.blue + "40" : "rgba(203,213,225,0.5)"}`,
           borderRadius: 28,
           overflow: "hidden",
           display: "flex", flexDirection: "column",
+          backdropFilter: "blur(12px)",
           transition: "box-shadow 0.25s, transform 0.25s, border-color 0.25s",
           boxShadow: hov
-            ? "0 20px 60px rgba(0,0,0,0.11), 0 4px 16px rgba(0,0,0,0.06)"
-            : "0 2px 12px rgba(0,0,0,0.05)",
+            ? "0 20px 60px rgba(37,99,235,0.16), 0 4px 16px rgba(14,165,233,0.10)"
+            : "0 2px 12px rgba(14,165,233,0.07)",
           transform: hov ? "translateY(-6px) scale(1.005)" : "none",
         }}
       >
         {/* Visual demo area */}
         <div style={{
-          background: `linear-gradient(160deg, ${C.bg2} 0%, #e2dfd8 100%)`,
+          background: `linear-gradient(160deg, ${C.gradStart} 0%, ${C.gradMid} 60%, ${C.gradEnd} 100%)`,
           padding: "32px 28px 24px",
           minHeight: 220,
           position: "relative",
@@ -1729,14 +1739,14 @@ function CardPasteLink() {
 // ─── Showcase Section wrapper ─────────────────────────────────────────────────
 function ShowcaseSection() {
   return (
-    <section style={{ background: C.bg2, borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}` }}>
+    <section style={{ background: "rgba(255,255,255,0.5)", borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}`, backdropFilter: "blur(8px)" }}>
       <style>{`
         @keyframes float-up {
           0%, 100% { transform: translateY(0px); }
           50%       { transform: translateY(-6px); }
         }
       `}</style>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "88px 40px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(48px,7vw,88px) clamp(16px,4vw,40px)" }}>
 
         {/* Section header */}
         <FadeIn>
@@ -1757,8 +1767,8 @@ function ShowcaseSection() {
           </div>
         </FadeIn>
 
-        {/* 2-column grid — alternating tall/short for visual rhythm */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        {/* 2-column grid — collapses to 1 col on mobile */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20 }}>
           <ShowCard
             title="Full Financial Breakdown"
             tag="Cash Flow" tagColor={C.green}
@@ -1829,7 +1839,7 @@ function Marquee() {
   ];
   const doubled = [...items, ...items]; // duplicate for seamless loop
   return (
-    <div style={{ overflow: "hidden", borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}`, padding: "18px 0", background: C.bg }}>
+    <div style={{ overflowX: "hidden", borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}`, padding: "18px 0", background: "rgba(255,255,255,0.7)", backdropFilter: "blur(8px)", width: "100%" }}>
       <style>{`
         @keyframes marquee-scroll {
           0%   { transform: translateX(0); }
@@ -1925,13 +1935,14 @@ function StatCard({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          background: hovered ? C.text : C.bg,
-          border: `1px solid ${hovered ? C.text : C.rule}`,
+          background: hovered ? `linear-gradient(135deg, ${C.blue}, ${C.accent})` : "rgba(255,255,255,0.8)",
+          border: `1px solid ${hovered ? "transparent" : C.rule}`,
           borderRadius: 22,
           padding: "32px 28px",
+          backdropFilter: "blur(8px)",
           transition: "background 0.25s, transform 0.22s, border-color 0.22s, box-shadow 0.22s",
           transform: hovered ? "translateY(-5px)" : "none",
-          boxShadow: hovered ? "0 12px 36px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.04)",
+          boxShadow: hovered ? "0 16px 40px rgba(37,99,235,0.25)" : "0 2px 12px rgba(14,165,233,0.08)",
           cursor: "default",
           position: "relative",
           overflow: "hidden",
@@ -2194,7 +2205,7 @@ function StepVisual02() {
       </div>
 
       {/* 4 metric tiles */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
         {metrics.map((m, i) => (
           <div key={i} style={{
             background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 12,
@@ -2327,16 +2338,17 @@ function Step({
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
         style={{
-          background: C.bg,
-          border: `1px solid ${hov ? "#b8b5ae" : C.rule}`,
+          background: "rgba(255,255,255,0.85)",
+          border: `1px solid ${hov ? C.blue + "50" : "rgba(203,213,225,0.6)"}`,
           borderRadius: 24,
           overflow: "hidden",
           display: "flex", flexDirection: "column",
           height: "100%",
+          backdropFilter: "blur(12px)",
           transition: "box-shadow 0.22s, transform 0.22s, border-color 0.22s",
           boxShadow: hov
-            ? "0 20px 56px rgba(0,0,0,0.11), 0 4px 16px rgba(0,0,0,0.06)"
-            : "0 2px 10px rgba(0,0,0,0.045)",
+            ? `0 20px 56px rgba(37,99,235,0.15), 0 4px 16px rgba(14,165,233,0.1)`
+            : "0 2px 12px rgba(14,165,233,0.07)",
           transform: hov ? "translateY(-6px)" : "none",
         }}
       >
@@ -2345,7 +2357,7 @@ function Step({
 
         {/* Visual demo area */}
         <div style={{
-          background: `linear-gradient(158deg, ${C.bg2} 0%, #e0dcd5 100%)`,
+          background: `linear-gradient(158deg, ${C.gradStart} 0%, ${C.gradEnd} 100%)`,
           padding: "24px 22px 20px", flexShrink: 0,
         }}>
           {visual}
@@ -2393,20 +2405,33 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
   const [ctaHovered, setCtaHovered] = useState(false);
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "inherit" }}>
+    <div style={{ background: "transparent", minHeight: "100vh", color: C.text, fontFamily: "inherit" }}>
 
       {/* ── HERO ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "72px 40px 60px", textAlign: "center" }}>
+      <section style={{
+        maxWidth: 1100, margin: "0 auto",
+        padding: "clamp(40px,8vw,80px) clamp(16px,4vw,40px) clamp(32px,6vw,60px)",
+        textAlign: "center", position: "relative",
+      }}>
+        {/* Soft radial glow behind hero content — Clearbit style */}
+        <div style={{
+          position: "absolute", top: "10%", left: "50%",
+          transform: "translateX(-50%)",
+          width: "80%", maxWidth: 700, height: 400,
+          background: "radial-gradient(ellipse at center, rgba(14,165,233,0.18) 0%, rgba(16,185,129,0.10) 50%, transparent 75%)",
+          pointerEvents: "none", zIndex: 0, borderRadius: "50%",
+        }} />
+        <div style={{ position: "relative", zIndex: 1 }}>
 
-        {/* Brand wordmark */}
+        {/* Brand wordmark — primary, dominant, centered */}
         <FadeIn>
           <p style={{
-            fontSize: "clamp(15px,1.8vw,18px)",
+            fontSize: "clamp(42px,6vw,72px)",
             fontWeight: 800,
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
+            letterSpacing: "-0.03em",
             color: C.text,
-            marginBottom: 40,
+            lineHeight: 1,
+            margin: "0 auto 32px",
             fontFamily: "inherit",
           }}>
             Dealistic
@@ -2416,13 +2441,16 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
         {/* Headline */}
         <FadeIn delay={0.08}>
           <h1 style={{
-            fontSize: "clamp(52px,8vw,100px)",
-            fontWeight: 700,
-            lineHeight: 1.0,
-            letterSpacing: "-0.05em",
+            fontSize: "clamp(28px,4.5vw,56px)",
+            fontWeight: 500,
+            lineHeight: 1.15,
+            letterSpacing: "-0.03em",
             margin: "0 auto 28px",
-            color: C.text,
-            maxWidth: 860,
+            background: `linear-gradient(135deg, ${C.text} 0%, ${C.blue} 55%, ${C.green} 100%)`,
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            maxWidth: 720,
           }}>
             Analyze real estate deals in seconds.
           </h1>
@@ -2444,8 +2472,8 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
               onMouseLeave={() => setCtaHovered(false)}
               style={{
                 padding: "15px 32px",
-                background: C.text,
-                color: C.bg,
+                background: `linear-gradient(135deg, ${C.blue}, ${C.accent})`,
+                color: "#fff",
                 border: "none",
                 borderRadius: 999,
                 fontSize: 14,
@@ -2455,7 +2483,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
                 letterSpacing: "0.02em",
                 transition: "transform 0.18s, box-shadow 0.18s",
                 transform: ctaHovered ? "scale(1.03)" : "scale(1)",
-                boxShadow: ctaHovered ? "0 8px 24px rgba(0,0,0,0.18)" : "0 2px 8px rgba(0,0,0,0.1)",
+                boxShadow: ctaHovered ? "0 8px 28px rgba(37,99,235,0.35)" : "0 2px 12px rgba(37,99,235,0.2)",
               }}
             >
               Analyze a Deal →
@@ -2481,14 +2509,15 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
             </button>
           </div>
         </FadeIn>
+        </div>
       </section>
 
       {/* ── MARQUEE ── */}
       <Marquee />
 
       {/* ── STATS ROW ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "72px 40px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(40px,6vw,72px) clamp(16px,4vw,40px)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <StatCard numEnd={24} suffix="s" sub="Average time to calculate every rental metric for a deal" delay={0} />
           <StatCard numEnd={12} suffix="+" sub="Cash flow, cap rate, DSCR, CoC return, NOI, LTV, and more" delay={0.08} />
           <StatCard numEnd={100} sub="Complex math turned into one clear verdict — from 1 to 100" delay={0.16} />
@@ -2497,7 +2526,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 40px 96px" }}>
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(56px,8vw,96px)" }}>
 
         {/* Section header */}
         <FadeIn>
@@ -2524,9 +2553,9 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
         </FadeIn>
 
         {/* Three step cards — equal height */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "stretch" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, alignItems: "stretch" }}>
           <Step
-            n="01" stepColor="#4a6cf7" delay={0}
+            n="01" stepColor={C.blue} delay={0}
             title="Enter your property details"
             desc="Paste a listing link, upload a CSV, or fill in a few numbers. You don't need everything — Dealistic fills in smart defaults for anything you skip."
             bullets={[
@@ -2539,7 +2568,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
             visual={<StepVisual01 />}
           />
           <Step
-            n="02" stepColor={C.green} delay={0.12}
+            n="02" stepColor={C.accentGreen} delay={0.12}
             title="See every metric, instantly"
             desc="No spreadsheets, no formulas. Dealistic calculates everything in real time and shows you exactly where your money goes each month."
             bullets={[
@@ -2552,7 +2581,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
             visual={<StepVisual02 />}
           />
           <Step
-            n="03" stepColor={C.amber} delay={0.24}
+            n="03" stepColor={C.accent} delay={0.24}
             title="Get your deal score"
             desc="Every deal gets a score from 1–100. Dealistic explains the verdict in plain language — what's working, what to watch, and why."
             bullets={[
@@ -2569,12 +2598,12 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
       <ShowcaseSection />
 
       {/* ── CTA BLOCK ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "100px 40px" }}>
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px,8vw,100px) clamp(16px,4vw,40px)" }}>
         <FadeIn>
           <div style={{
-            background: C.text,
+            background: `linear-gradient(135deg, ${C.pill} 0%, ${C.blue} 60%, ${C.accent} 100%)`,
             borderRadius: 28,
-            padding: "72px 64px",
+            padding: "clamp(32px,5vw,72px) clamp(20px,5vw,64px)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -2594,8 +2623,8 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
               style={{
                 flexShrink: 0,
                 padding: "16px 36px",
-                background: C.bg,
-                color: C.text,
+                background: "#fff",
+                color: C.blue,
                 border: "none",
                 borderRadius: 999,
                 fontSize: 14,
@@ -2615,9 +2644,9 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
       </section>
 
       {/* ── FOOTER ── */}
-      <footer style={{ borderTop: `1px solid ${C.rule}`, padding: "56px 40px 52px" }}>
+      <footer style={{ borderTop: `1px solid ${C.rule}`, padding: "clamp(32px,5vw,56px) clamp(16px,4vw,40px) clamp(28px,4vw,52px)" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 40 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <p style={{ fontSize: 16, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Dealistic</p>
             <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
               Built by{" "}
@@ -3193,7 +3222,7 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel }
 }
 
 const EMPTY_FORM: Record<string, string> = {
-  address: "", price: "", down: "", rate: "", term: "30",
+  address: "", state: "", price: "", down: "", rate: "", term: "30",
   rent: "", vacancy: "5", taxes: "", insurance: "",
   hoa: "0", repairs: "", mgmt: "", other: "0",
 };
@@ -3207,6 +3236,154 @@ function applySmartDefaults(f: Record<string, string>): Record<string, string> {
   if (!f.insurance && price > 0) out.insurance = String(Math.round((price * 0.0065) / 12));
   if (!f.vacancy) out.vacancy = "5";
   return out;
+}
+
+// ─── U.S. State data for the Analyzer ────────────────────────────────────────
+
+const US_STATES: { abbr: string; name: string }[] = [
+  { abbr: "AL", name: "Alabama" },       { abbr: "AK", name: "Alaska" },
+  { abbr: "AZ", name: "Arizona" },       { abbr: "AR", name: "Arkansas" },
+  { abbr: "CA", name: "California" },    { abbr: "CO", name: "Colorado" },
+  { abbr: "CT", name: "Connecticut" },   { abbr: "DE", name: "Delaware" },
+  { abbr: "FL", name: "Florida" },       { abbr: "GA", name: "Georgia" },
+  { abbr: "HI", name: "Hawaii" },        { abbr: "ID", name: "Idaho" },
+  { abbr: "IL", name: "Illinois" },      { abbr: "IN", name: "Indiana" },
+  { abbr: "IA", name: "Iowa" },          { abbr: "KS", name: "Kansas" },
+  { abbr: "KY", name: "Kentucky" },      { abbr: "LA", name: "Louisiana" },
+  { abbr: "ME", name: "Maine" },         { abbr: "MD", name: "Maryland" },
+  { abbr: "MA", name: "Massachusetts" }, { abbr: "MI", name: "Michigan" },
+  { abbr: "MN", name: "Minnesota" },     { abbr: "MS", name: "Mississippi" },
+  { abbr: "MO", name: "Missouri" },      { abbr: "MT", name: "Montana" },
+  { abbr: "NE", name: "Nebraska" },      { abbr: "NV", name: "Nevada" },
+  { abbr: "NH", name: "New Hampshire" }, { abbr: "NJ", name: "New Jersey" },
+  { abbr: "NM", name: "New Mexico" },    { abbr: "NY", name: "New York" },
+  { abbr: "NC", name: "North Carolina" },{ abbr: "ND", name: "North Dakota" },
+  { abbr: "OH", name: "Ohio" },          { abbr: "OK", name: "Oklahoma" },
+  { abbr: "OR", name: "Oregon" },        { abbr: "PA", name: "Pennsylvania" },
+  { abbr: "RI", name: "Rhode Island" },  { abbr: "SC", name: "South Carolina" },
+  { abbr: "SD", name: "South Dakota" },  { abbr: "TN", name: "Tennessee" },
+  { abbr: "TX", name: "Texas" },         { abbr: "UT", name: "Utah" },
+  { abbr: "VT", name: "Vermont" },       { abbr: "VA", name: "Virginia" },
+  { abbr: "WA", name: "Washington" },    { abbr: "WV", name: "West Virginia" },
+  { abbr: "WI", name: "Wisconsin" },     { abbr: "WY", name: "Wyoming" },
+];
+
+interface StateSummaryData {
+  taxRate: string;        // typical effective property tax rate
+  taxNote: string;        // short plain-English description
+  insurance: string;      // typical insurance cost note
+  investorFriendly: "high" | "medium" | "low";
+  investorNote: string;
+  climate: string;        // brief climate / hazard note
+  opportunity: string;    // key opportunity or caution
+}
+
+const STATE_SUMMARIES: Record<string, StateSummaryData> = {
+  AL: { taxRate: "~0.40%", taxNote: "Very low property taxes — one of the lowest in the nation.", insurance: "Moderate. Coastal counties carry elevated wind/hurricane risk.", investorFriendly: "high", investorNote: "Landlord-friendly state with straightforward eviction process.", climate: "Hurricane risk in coastal south; tornadoes inland.", opportunity: "Low entry prices and strong rent-to-price ratios in Birmingham and Huntsville." },
+  AK: { taxRate: "~1.04%", taxNote: "Moderate property taxes; no state income or sales tax.", insurance: "Higher due to remote location and extreme weather.", investorFriendly: "medium", investorNote: "Smaller rental market; high carrying costs in remote areas.", climate: "Extreme cold; infrastructure costs are high.", opportunity: "Strong demand near Anchorage. Limited supply keeps vacancy low." },
+  AZ: { taxRate: "~0.62%", taxNote: "Below-average property taxes with homestead exemptions.", insurance: "Low to moderate. Wildfire risk in northern higher elevations.", investorFriendly: "high", investorNote: "Very landlord-friendly. Fast eviction process (~30 days).", climate: "Extreme heat in Phoenix metro. Wildfire risk in Flagstaff area.", opportunity: "Phoenix and Tucson see strong population growth and rental demand." },
+  AR: { taxRate: "~0.63%", taxNote: "Low property taxes; assessment system can be inconsistent.", insurance: "Moderate. Tornado alley increases some risk.", investorFriendly: "high", investorNote: "Straightforward landlord laws, fast eviction timelines.", climate: "Severe thunderstorms and tornado risk.", opportunity: "Very low purchase prices in Little Rock and Fayetteville with solid cap rates." },
+  CA: { taxRate: "~0.74%", taxNote: "Below-average effective rate but high home prices mean large absolute bills. Prop 13 caps annual increases.", insurance: "High and rising sharply. Wildfire risk has driven many carriers to exit the state.", investorFriendly: "low", investorNote: "Heavily tenant-friendly laws. Eviction can take 6–18+ months. Rent control in many cities.", climate: "Wildfire risk statewide. Earthquake risk in coastal areas.", opportunity: "Cash flow is very difficult. Appreciation plays work better. Look at Inland Empire or Central Valley for better numbers." },
+  CO: { taxRate: "~0.51%", taxNote: "Low effective rate; TABOR limits tax increases.", insurance: "Moderate to high. Hail and wildfire risk is significant.", investorFriendly: "medium", investorNote: "Balanced laws. Denver has some rent stabilization pressure.", climate: "Hail risk along Front Range. Wildfire risk in mountain communities.", opportunity: "Denver and Colorado Springs offer strong demand; cash flow is tight at current prices." },
+  CT: { taxRate: "~1.79%", taxNote: "High property taxes — among the highest in New England.", insurance: "Moderate. Coastal areas carry hurricane/flood risk.", investorFriendly: "low", investorNote: "Tenant-friendly state. Evictions can be slow and expensive.", climate: "Nor'easters and coastal storm risk.", opportunity: "Bridgeport and Hartford offer lower prices but require careful tenant screening." },
+  DE: { taxRate: "~0.57%", taxNote: "Low property taxes and no sales tax.", insurance: "Moderate. Some coastal flood exposure.", investorFriendly: "medium", investorNote: "Balanced landlord-tenant laws.", climate: "Coastal storm and flooding risk in Sussex County.", opportunity: "Small market but strong demand near Wilmington from Philadelphia commuters." },
+  FL: { taxRate: "~0.89%", taxNote: "No state income tax. Homestead exemption reduces tax on primary residence (not rentals).", insurance: "Very high and rising sharply due to hurricane risk. Get quotes before closing.", investorFriendly: "high", investorNote: "Very landlord-friendly with fast eviction (3-day notice). No rent control statewide.", climate: "Hurricane and flood risk statewide, especially coastal. Flood insurance often mandatory.", opportunity: "Strong population growth drives demand. Insurance costs are the key variable — budget carefully." },
+  GA: { taxRate: "~0.87%", taxNote: "Moderate property taxes with homestead exemptions.", insurance: "Moderate. Atlanta metro is low risk; coastal areas higher.", investorFriendly: "high", investorNote: "Landlord-friendly laws, efficient eviction process.", climate: "Hurricane risk on coast; occasional ice storms inland.", opportunity: "Atlanta suburbs offer strong cash flow and appreciation. Growing job market." },
+  HI: { taxRate: "~0.28%", taxNote: "Lowest property tax rate in the US — but high values mean high bills.", insurance: "High. Hurricane and volcanic risk depending on island.", investorFriendly: "low", investorNote: "Strict tenant protections. Short-term rentals heavily restricted.", climate: "Volcanic activity on Big Island. Hurricane risk.", opportunity: "Extremely high prices make traditional cash flow nearly impossible. Luxury and vacation rentals only." },
+  ID: { taxRate: "~0.69%", taxNote: "Moderate and stable property taxes.", insurance: "Low to moderate. Minimal natural disaster risk.", investorFriendly: "high", investorNote: "Landlord-friendly with efficient courts.", climate: "Low risk. Occasional drought.", opportunity: "Boise has seen rapid growth. Prices have risen but fundamentals remain solid." },
+  IL: { taxRate: "~2.08%", taxNote: "Among the highest property taxes in the US — factor this carefully.", insurance: "Moderate. Tornado risk in southern Illinois.", investorFriendly: "low", investorNote: "Chicago has rent control pressure. Eviction courts are backlogged.", climate: "Severe winters. Tornado risk downstate.", opportunity: "Chicago south suburbs offer very low prices and high cap rates — but require hands-on management." },
+  IN: { taxRate: "~0.85%", taxNote: "Moderate property taxes with circuit-breaker caps.", insurance: "Low to moderate. Tornado risk in southern counties.", investorFriendly: "high", investorNote: "Very landlord-friendly. One of the best states for investor protections.", climate: "Cold winters. Occasional tornado risk.", opportunity: "Indianapolis is one of the best cash-flow markets in the Midwest. Strong fundamentals." },
+  IA: { taxRate: "~1.50%", taxNote: "Above-average property taxes — watch your expense model.", insurance: "Moderate. Tornado and flooding risk.", investorFriendly: "medium", investorNote: "Balanced laws. Evictions are straightforward.", climate: "Tornado and flooding risk especially in river valleys.", opportunity: "Des Moines offers stable demand and low acquisition costs." },
+  KS: { taxRate: "~1.41%", taxNote: "Above-average property taxes. Rates vary by county.", insurance: "Moderate. Significant tornado risk — Tornado Alley.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Major tornado and hail risk.", opportunity: "Wichita and Kansas City suburbs offer strong rent-to-price ratios." },
+  KY: { taxRate: "~0.83%", taxNote: "Moderate property taxes.", insurance: "Low to moderate.", investorFriendly: "high", investorNote: "Landlord-friendly with clear eviction procedures.", climate: "Ice storms and flooding risk. Tornado risk in western counties.", opportunity: "Louisville offers one of the best cash-flow profiles of any mid-size US city." },
+  LA: { taxRate: "~0.55%", taxNote: "Low effective tax rate but complex assessment system.", insurance: "High — hurricane and flooding risk is significant. Flood insurance often required.", investorFriendly: "medium", investorNote: "Balanced laws, though courts can be slow.", climate: "Major hurricane and flooding risk statewide.", opportunity: "New Orleans offers character but insurance costs and flood risk require careful underwriting." },
+  ME: { taxRate: "~1.09%", taxNote: "Above-average property taxes.", insurance: "Moderate. Coastal storm risk.", investorFriendly: "medium", investorNote: "Balanced, somewhat tenant-leaning laws.", climate: "Harsh winters. Coastal storm risk.", opportunity: "Short-term rentals near coast perform well. Long-term rental demand is thin outside Portland." },
+  MD: { taxRate: "~1.09%", taxNote: "Above-average taxes. Baltimore City rates are especially high.", insurance: "Moderate.", investorFriendly: "low", investorNote: "Baltimore City has strong tenant protections and a slow eviction process.", climate: "Coastal storm risk. Occasional flooding.", opportunity: "DC suburbs offer strong demand but high prices. Baltimore proper has high cash flow but high management burden." },
+  MA: { taxRate: "~1.17%", taxNote: "Above-average property taxes, though well-funded public services.", insurance: "Moderate. Coastal storm risk in Cape Cod and islands.", investorFriendly: "low", investorNote: "Strong tenant protections. Just-cause eviction laws in many cities.", climate: "Nor'easters, coastal flooding risk.", opportunity: "Strong rental demand near universities. Cash flow very difficult in Boston metro." },
+  MI: { taxRate: "~1.54%", taxNote: "High property taxes — one of the highest effective rates in the Midwest.", insurance: "Moderate.", investorFriendly: "medium", investorNote: "Balanced laws. Detroit evictions can be slow.", climate: "Harsh winters. Great Lakes wind chill.", opportunity: "Detroit metro offers very low prices and high cap rates. Grand Rapids has stronger fundamentals." },
+  MN: { taxRate: "~1.02%", taxNote: "Moderate to high taxes. Classification system varies for rentals.", insurance: "Moderate. Some tornado risk.", investorFriendly: "medium", investorNote: "Balanced laws with some tenant-leaning protections in Minneapolis.", climate: "Extreme cold winters. Tornado risk in summer.", opportunity: "Minneapolis-St. Paul has strong rental demand but prices have risen significantly." },
+  MS: { taxRate: "~0.65%", taxNote: "Low property taxes.", insurance: "Moderate to high on Gulf Coast due to hurricane risk.", investorFriendly: "high", investorNote: "Very landlord-friendly state.", climate: "Hurricane and tornado risk.", opportunity: "Lowest home prices in the nation with solid cap rates — high management intensity required." },
+  MO: { taxRate: "~0.97%", taxNote: "Moderate property taxes.", insurance: "Moderate. Tornado risk.", investorFriendly: "high", investorNote: "Landlord-friendly with efficient courts.", climate: "Tornado and flooding risk.", opportunity: "Kansas City and St. Louis offer solid cash flow markets with affordable entry." },
+  MT: { taxRate: "~0.83%", taxNote: "Moderate taxes. Rates vary significantly by county.", insurance: "Moderate. Wildfire risk is increasing.", investorFriendly: "medium", investorNote: "Balanced laws.", climate: "Wildfire risk. Harsh winters in northern counties.", opportunity: "Bozeman has seen rapid appreciation. Missoula has stable rental demand." },
+  NE: { taxRate: "~1.67%", taxNote: "High property taxes — factor carefully.", insurance: "Moderate. Tornado and hail risk.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Tornado and hail risk. Cold winters.", opportunity: "Omaha offers stable demand and low prices. Strong military and university tenant base." },
+  NV: { taxRate: "~0.60%", taxNote: "Low property taxes; no state income tax.", insurance: "Low to moderate. Some wildfire risk.", investorFriendly: "high", investorNote: "Very landlord-friendly. Fast eviction process.", climate: "Extreme heat in Las Vegas. Low precipitation.", opportunity: "Las Vegas has strong short-term and long-term rental demand with growing tech sector." },
+  NH: { taxRate: "~1.86%", taxNote: "Very high property taxes — highest in New England alongside NJ.", insurance: "Moderate.", investorFriendly: "medium", investorNote: "Balanced laws.", climate: "Harsh winters. Nor'easter risk.", opportunity: "Manchester offers lower prices than Boston with proximity to the metro area." },
+  NJ: { taxRate: "~2.47%", taxNote: "Highest effective property tax rate in the nation. Factor this into every analysis.", insurance: "Moderate to high. Coastal flood and hurricane risk.", investorFriendly: "low", investorNote: "Strong tenant protections. Evictions can be extremely slow — 12+ months.", climate: "Coastal storm and flooding risk. Nor'easters.", opportunity: "Proximity to NYC drives strong demand but taxes and tenant laws make cash flow very difficult." },
+  NM: { taxRate: "~0.55%", taxNote: "Low property taxes.", insurance: "Low to moderate. Wildfire risk in forested areas.", investorFriendly: "medium", investorNote: "Balanced laws.", climate: "Drought and wildfire risk. Desert heat.", opportunity: "Albuquerque offers affordable prices and stable university/military tenant base." },
+  NY: { taxRate: "~1.72%", taxNote: "High property taxes — NYC has complex additional tax rules.", insurance: "Moderate to high in NYC metro and coastal areas.", investorFriendly: "low", investorNote: "Heavily tenant-friendly — among the strongest in the nation. NYC has strict rent stabilization. Evictions can take 18+ months.", climate: "Coastal storm risk. Harsh winters upstate.", opportunity: "NYC cash flow is nearly impossible. Upstate cities like Buffalo and Rochester have high cap rates but require intensive management." },
+  NC: { taxRate: "~0.80%", taxNote: "Moderate property taxes.", insurance: "Moderate. Coastal areas have hurricane risk; inland has tornado risk.", investorFriendly: "high", investorNote: "Landlord-friendly with efficient eviction process.", climate: "Hurricane risk on coast. Tornado risk in piedmont.", opportunity: "Charlotte and Raleigh-Durham are among the strongest fundamentals in the Southeast." },
+  ND: { taxRate: "~0.98%", taxNote: "Moderate property taxes.", insurance: "Low to moderate.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Extreme cold. High wind.", opportunity: "Fargo offers stable demand, low prices, and solid yields — energy sector tenant base." },
+  OH: { taxRate: "~1.59%", taxNote: "High property taxes for the Midwest — verify county rates.", insurance: "Moderate.", investorFriendly: "high", investorNote: "Landlord-friendly with efficient courts.", climate: "Cold winters. Lake effect snow in northern counties.", opportunity: "Cleveland, Columbus, and Cincinnati offer excellent cash flow with low entry costs." },
+  OK: { taxRate: "~0.90%", taxNote: "Moderate property taxes.", insurance: "Moderate to high. Tornado risk is among the highest in the nation.", investorFriendly: "high", investorNote: "Very landlord-friendly.", climate: "Major tornado and severe weather risk — Tornado Alley.", opportunity: "Oklahoma City and Tulsa offer very strong rent-to-price ratios." },
+  OR: { taxRate: "~0.93%", taxNote: "Moderate taxes; Measure 5/50 caps limit increases.", insurance: "Moderate. Earthquake and wildfire risk.", investorFriendly: "low", investorNote: "Tenant-friendly. Portland has just-cause eviction and rent stabilization.", climate: "Wildfire risk in eastern/central Oregon. Earthquake risk statewide.", opportunity: "Portland cash flow is challenging. Eugene and Salem offer better fundamentals." },
+  PA: { taxRate: "~1.49%", taxNote: "High property taxes — varies significantly by municipality.", insurance: "Moderate.", investorFriendly: "medium", investorNote: "Balanced laws. Philadelphia has some tenant protections.", climate: "Cold winters. Nor'easter risk in east.", opportunity: "Pittsburgh offers strong cash flow. Philadelphia requires careful market selection." },
+  RI: { taxRate: "~1.63%", taxNote: "High property taxes.", insurance: "Moderate. Coastal storm risk.", investorFriendly: "low", investorNote: "Tenant-friendly laws.", climate: "Coastal storm and flooding risk.", opportunity: "Small market. Providence offers university rental demand." },
+  SC: { taxRate: "~0.57%", taxNote: "Low property taxes. Investment properties taxed at 6% assessment ratio vs. 4% for owner-occupied.", insurance: "Moderate to high on coast. Hurricane and wind risk.", investorFriendly: "high", investorNote: "Landlord-friendly with fast eviction process.", climate: "Hurricane risk on coast.", opportunity: "Charleston and Greenville are among the strongest growing markets in the Southeast." },
+  SD: { taxRate: "~1.08%", taxNote: "Moderate taxes. No state income tax.", insurance: "Low to moderate.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Extreme cold and wind. Blizzard risk.", opportunity: "Sioux Falls has surprisingly strong rental demand and low vacancy." },
+  TN: { taxRate: "~0.66%", taxNote: "Low property taxes. No state income tax.", insurance: "Low to moderate. Tornado risk in Memphis area.", investorFriendly: "high", investorNote: "Very landlord-friendly. Among the best eviction timelines in the country.", climate: "Tornado risk in west. Flash flooding in Nashville area.", opportunity: "Nashville and Memphis are strong markets. Nashville has seen price compression; Memphis has high yields." },
+  TX: { taxRate: "~1.68%", taxNote: "High property taxes offset by no state income tax. Factor this carefully — it materially affects cash flow.", insurance: "Moderate to high. Hail, wind, flood risk varies by region. Rising premiums statewide.", investorFriendly: "high", investorNote: "Very landlord-friendly. Fast eviction process (3–5 weeks typical).", climate: "Hail risk in DFW and central Texas. Hurricane risk on Gulf Coast. Flooding in Houston.", opportunity: "Dallas, Houston, San Antonio, and Austin all have strong fundamentals. Property taxes are the key expense to model correctly." },
+  UT: { taxRate: "~0.56%", taxNote: "Low property taxes.", insurance: "Low to moderate. Earthquake risk along Wasatch Front.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Earthquake risk. Winter storms in mountains.", opportunity: "Salt Lake City has seen rapid appreciation. Strong job growth and population influx continue." },
+  VT: { taxRate: "~1.83%", taxNote: "Very high property taxes.", insurance: "Moderate.", investorFriendly: "low", investorNote: "Tenant-friendly laws. Small market.", climate: "Harsh winters. Flooding risk.", opportunity: "Burlington has university demand but extremely thin inventory." },
+  VA: { taxRate: "~0.82%", taxNote: "Moderate property taxes.", insurance: "Moderate. Coastal storm risk in Hampton Roads.", investorFriendly: "medium", investorNote: "Balanced laws. Some local jurisdictions have tenant-leaning ordinances.", climate: "Hurricane risk on coast. Snowstorms in northern VA.", opportunity: "Northern Virginia has strong demand driven by federal employment. Richmond offers better cash flow." },
+  WA: { taxRate: "~0.93%", taxNote: "Moderate taxes. No state income tax.", insurance: "Moderate. Earthquake and wildfire risk.", investorFriendly: "low", investorNote: "Tenant-friendly. Seattle has just-cause eviction and rent increase notice requirements.", climate: "Wildfire risk in eastern WA. Earthquake risk statewide.", opportunity: "Seattle cash flow is very challenging. Spokane and Tri-Cities offer better fundamentals." },
+  WV: { taxRate: "~0.57%", taxNote: "Low property taxes.", insurance: "Low to moderate. Flooding risk in river valleys.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Flooding risk. Harsh winters.", opportunity: "Very low prices but limited rental demand outside Charleston and Morgantown." },
+  WI: { taxRate: "~1.73%", taxNote: "High property taxes — verify county rates carefully.", insurance: "Moderate.", investorFriendly: "medium", investorNote: "Balanced laws.", climate: "Extreme cold winters. Great Lakes wind chill.", opportunity: "Milwaukee and Madison offer affordable prices with solid rental demand." },
+  WY: { taxRate: "~0.57%", taxNote: "Low property taxes. No state income tax.", insurance: "Low to moderate. Hail and wind risk.", investorFriendly: "high", investorNote: "Landlord-friendly state.", climate: "Extreme wind. Cold winters.", opportunity: "Cheyenne and Casper offer stability but limited population growth." },
+};
+
+const INVESTOR_FRIENDLY_LABELS = { high: "Investor-friendly", medium: "Balanced", low: "Tenant-leaning" };
+const INVESTOR_FRIENDLY_COLORS = { high: "#1a7a4a", medium: "#a06010", low: "#c0392b" };
+
+function StateSummaryCard({ stateAbbr }: { stateAbbr: string }) {
+  if (!stateAbbr) return null;
+  const data = STATE_SUMMARIES[stateAbbr];
+  if (!data) return null;
+  const stateName = US_STATES.find(s => s.abbr === stateAbbr)?.name ?? stateAbbr;
+  const ifColor = INVESTOR_FRIENDLY_COLORS[data.investorFriendly];
+  const ifLabel = INVESTOR_FRIENDLY_LABELS[data.investorFriendly];
+  return (
+    <div style={{
+      background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 14,
+      padding: "18px 20px", marginTop: 12,
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: C.text, letterSpacing: "-0.01em" }}>{stateName} — Market Overview</p>
+        <span style={{
+          fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase",
+          background: ifColor + "18", color: ifColor, border: `1px solid ${ifColor}40`,
+          borderRadius: 999, padding: "3px 10px",
+        }}>{ifLabel}</span>
+      </div>
+      {/* Four data rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[
+          { icon: "🏷️", label: "Property Tax", value: data.taxRate, note: data.taxNote },
+          { icon: "🏠", label: "Insurance",    value: "",           note: data.insurance },
+          { icon: "⚖️", label: "Landlord Laws", value: "",          note: data.investorNote },
+          { icon: "🌤️", label: "Climate Risk", value: "",           note: data.climate },
+        ].map((row, i) => (
+          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{row.icon}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>{row.label}</span>
+                {row.value && <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{row.value}</span>}
+              </div>
+              <p style={{ fontSize: 11, color: C.muted, lineHeight: 1.55, marginTop: 2 }}>{row.note}</p>
+            </div>
+          </div>
+        ))}
+        {/* Opportunity callout */}
+        <div style={{ marginTop: 4, paddingTop: 12, borderTop: `1px solid ${C.rule}` }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 14, flexShrink: 0 }}>💡</span>
+            <p style={{ fontSize: 11, color: C.text, lineHeight: 1.6, fontStyle: "italic" }}>{data.opportunity}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: SavedDeal) => void; prefill?: DealInput | null; user: AuthUser | null; onOpenLogin: () => void }) {
@@ -3435,16 +3612,16 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
   const priceVal = pf(form.price);
 
   function SectionLabel({ text }: { text: string }) {
-    return <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 24 }}>{text}</p>;
+    return <div className="az-section-label">{text}</div>;
   }
 
   const isBuyer = appMode === "buyer";
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", color: C.text }}>
+    <div style={{ background: "#f8fafc", minHeight: "100vh", color: C.text }}>
       {/* ── Analyzer header — self-contained, no overlap with global fixed elements ── */}
-      <div style={{ borderBottom: `1px solid ${C.rule}`, background: C.bg }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 32px" }}>
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(12px,3vw,32px)" }}>
 
           {/* Row 1: app mode + input mode toggles — clean, no auth overlap */}
           <div style={{
@@ -3453,7 +3630,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
             borderBottom: `1px solid ${C.rule}`,
           }}>
             {/* Left: Home Buyer / Investor */}
-            <div style={{ display: "flex", background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 8, padding: 3, gap: 2 }}>
+            <div style={{ display: "flex", background: "#f1f5f9", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: 3, gap: 2 }}>
               {([
                 { key: "buyer" as AppMode, label: "Home Buyer" },
                 { key: "investor" as AppMode, label: "Investor" },
@@ -3464,12 +3641,13 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                     key={opt.key}
                     onClick={() => { setAppMode(opt.key); setResult(null); }}
                     style={{
-                      padding: "6px 16px", border: "none", borderRadius: 5,
-                      background: active ? C.text : "transparent",
-                      color: active ? "#fff" : C.muted,
-                      cursor: "pointer", fontFamily: "inherit", fontSize: 11,
-                      fontWeight: active ? 600 : 500, letterSpacing: "0.04em",
-                      transition: "all 0.15s", whiteSpace: "nowrap",
+                      padding: "7px 18px", border: "none", borderRadius: 7,
+                      background: active ? "#2563eb" : "transparent",
+                      color: active ? "#fff" : "#475569",
+                      cursor: "pointer", fontFamily: "inherit", fontSize: 12,
+                      fontWeight: active ? 700 : 500, letterSpacing: "0.02em",
+                      transition: "all 0.18s", whiteSpace: "nowrap",
+                      boxShadow: active ? "0 2px 8px rgba(37,99,235,0.2)" : "none",
                     }}
                   >
                     {opt.label}
@@ -3479,18 +3657,18 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
             </div>
 
             {/* Right: Manual / CSV */}
-            <div style={{ display: "flex", background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 8, padding: 3, gap: 2 }}>
+            <div style={{ display: "flex", background: "#f1f5f9", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: 3, gap: 2 }}>
               {(["manual", "csv"] as Mode[]).map(m => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
                   style={{
-                    padding: "6px 14px", border: "none", borderRadius: 5,
-                    background: mode === m ? C.text : "transparent",
-                    color: mode === m ? "#fff" : C.muted,
-                    cursor: "pointer", fontFamily: "inherit", fontSize: 11,
-                    fontWeight: mode === m ? 600 : 500, letterSpacing: "0.04em",
-                    transition: "all 0.15s", whiteSpace: "nowrap",
+                    padding: "7px 16px", border: "none", borderRadius: 7,
+                    background: mode === m ? "#0f172a" : "transparent",
+                    color: mode === m ? "#fff" : "#475569",
+                    cursor: "pointer", fontFamily: "inherit", fontSize: 12,
+                    fontWeight: mode === m ? 700 : 500, letterSpacing: "0.02em",
+                    transition: "all 0.18s", whiteSpace: "nowrap",
                   }}
                 >
                   {m === "manual" ? "Manual" : "CSV Upload"}
@@ -3501,10 +3679,10 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
 
           {/* Row 2: page title + subtitle */}
           <div style={{ paddingTop: 20, paddingBottom: 20 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.025em", margin: 0, color: C.text, lineHeight: 1.2 }}>
+            <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: "#0f172a", lineHeight: 1.2 }}>
               {isBuyer ? "Home Buyer Calculator" : "Deal Analyzer"}
             </h1>
-            <p style={{ fontSize: 12, color: C.faint, marginTop: 4, letterSpacing: "0.04em" }}>
+            <p style={{ fontSize: 13, color: "#64748b", marginTop: 5 }}>
               {isBuyer ? "Understand your monthly costs before you buy" : "Enter details or upload a CSV"}
             </p>
           </div>
@@ -3536,37 +3714,52 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
         </div>
       )}
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "52px 48px" }}>
+      <div style={{ maxWidth: 1260, margin: "0 auto", padding: "clamp(20px,3vw,40px) clamp(16px,3vw,40px)" }}>
 
         {/* ── Manual Mode ── */}
         {mode === "manual" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "clamp(16px,2.5vw,32px)", alignItems: "start" }}>
 
             {/* Form column */}
             <div>
               {/* Property Details */}
-              <div style={{ paddingBottom: 40, marginBottom: 40, borderBottom: `1px solid ${C.rule}` }}>
+              <div className="az-card" style={{ marginBottom: 20 }}>
                 <SectionLabel text="Property Details" />
+                {/* Address + State row */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
-                  <label style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, fontWeight: 500 }}>
-                    Address <span style={{ color: C.faint, fontWeight: 400 }}>(optional)</span>
+                  <label className="az-label">
+                    Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="123 Main St, Austin TX"
-                    value={form.address}
-                    onChange={e => setField("address")(e.target.value)}
-                    onFocus={e => { e.currentTarget.style.borderColor = C.text; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = C.rule; }}
-                    style={{ width: "100%", background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 0, color: C.text, fontSize: 14, padding: "11px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.12s" }}
-                  />
-                  <p style={{ fontSize: 11, color: C.faint, fontStyle: "italic", marginTop: 2 }}>Used to label your saved deal.</p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="123 Main St, Austin TX"
+                      value={form.address}
+                      onChange={e => setField("address")(e.target.value)}
+                      className="az-input"
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <select
+                      value={form.state}
+                      onChange={e => setField("state")(e.target.value)}
+                      className="az-select"
+                      style={{ width: 100, flexShrink: 0 }}
+                    >
+                      <option value="">State</option>
+                      {US_STATES.map(s => (
+                        <option key={s.abbr} value={s.abbr}>{s.abbr}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="az-hint">Used to label your saved deal. Selecting a state unlocks a market overview.</p>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* State summary card — appears when state is selected */}
+                <StateSummaryCard stateAbbr={form.state} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
                   {/* Purchase Price — has ref for URL autofill focus */}
                   <div style={{ display: "flex", flexDirection: "column" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <label style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, fontWeight: 500 }}>Purchase Price</label>
+                      <label className="az-label">Purchase Price</label>
                     </div>
                     <div style={{ position: "relative" }}>
                       <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: C.faint, pointerEvents: "none" }}>$</span>
@@ -3576,12 +3769,11 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                         placeholder="325,000"
                         value={form.price}
                         onChange={e => setField("price")(e.target.value)}
-                        onFocus={e => { e.currentTarget.style.borderColor = C.text; e.currentTarget.style.boxShadow = "none"; }}
-                        onBlur={e => { e.currentTarget.style.borderColor = highlightFields.has("price") ? "#4a6cf7" : C.rule; e.currentTarget.style.boxShadow = highlightFields.has("price") ? "0 0 0 3px rgba(74,108,247,0.12)" : "none"; }}
-                        style={{ width: "100%", background: C.bg2, border: `1px solid ${highlightFields.has("price") ? "#4a6cf7" : C.rule}`, boxShadow: highlightFields.has("price") ? "0 0 0 3px rgba(74,108,247,0.12)" : "none", borderRadius: 0, color: C.text, fontSize: 14, padding: "11px 12px 11px 26px", outline: "none", fontFamily: "inherit", transition: "border-color 0.12s, box-shadow 0.12s", boxSizing: "border-box" }}
+                        className="az-input az-input-prefix"
+                        style={{ border: highlightFields.has("price") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("price") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
                       />
                     </div>
-                    <p style={{ fontSize: 11, color: C.faint, marginTop: 5, lineHeight: 1.45, fontStyle: "italic" }}>The agreed sale price — find it on Zillow or your MLS listing.</p>
+                    <p className="az-hint">The agreed sale price — find it on Zillow or your MLS listing.</p>
                   </div>
                   <SmartField
                     label="Down Payment" placeholder="65,000" prefix="$"
@@ -3604,22 +3796,21 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
               </div>
 
               {/* Income — investor mode only */}
-              {!isBuyer && <div style={{ paddingBottom: 40, marginBottom: 40, borderBottom: `1px solid ${C.rule}` }}>
+              {!isBuyer && <div className="az-card" style={{ marginBottom: 20 }}>
                 <SectionLabel text="Rental Income" />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
 
                   {/* Rent field — custom, not SmartField, so we can attach a ref and the estimator */}
                   <div style={{ display: "flex", flexDirection: "column" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <label style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, fontWeight: 500 }}>
-                        Monthly Rent <span style={{ color: C.faint, fontWeight: 400 }}>(optional)</span>
+                      <label className="az-label">
+                        Monthly Rent <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
                       </label>
                       {priceVal > 0 && (
                         <button
                           onClick={() => setShowRentEstimate(v => !v)}
-                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.text; (e.currentTarget as HTMLElement).style.color = C.text; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.rule; (e.currentTarget as HTMLElement).style.color = C.muted; }}
-                          style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", background: "transparent", border: `1px solid ${C.rule}`, color: C.muted, padding: "3px 9px", cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s" }}
+                          className="az-btn-ghost"
+                          style={{ fontSize: 10 }}
                         >
                           {showRentEstimate ? "Hide" : "Estimate Rent"}
                         </button>
@@ -3633,14 +3824,11 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                         placeholder="2,400"
                         value={form.rent}
                         onChange={e => setField("rent")(e.target.value)}
-                        onFocus={e => { e.currentTarget.style.borderColor = C.text; e.currentTarget.style.boxShadow = "none"; }}
-                        onBlur={e => { e.currentTarget.style.borderColor = highlightFields.has("rent") ? "#4a6cf7" : C.rule; e.currentTarget.style.boxShadow = highlightFields.has("rent") ? "0 0 0 3px rgba(74,108,247,0.12)" : "none"; }}
-                        style={{ width: "100%", background: C.bg2, border: `1px solid ${highlightFields.has("rent") ? "#4a6cf7" : C.rule}`, boxShadow: highlightFields.has("rent") ? "0 0 0 3px rgba(74,108,247,0.12)" : "none", borderRadius: 0, color: C.text, fontSize: 14, padding: "11px 12px 11px 26px", outline: "none", fontFamily: "inherit", transition: "border-color 0.12s, box-shadow 0.12s", boxSizing: "border-box" }}
+                        className="az-input az-input-prefix"
+                        style={{ border: highlightFields.has("rent") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("rent") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
                       />
                     </div>
-                    <p style={{ fontSize: 11, color: C.faint, marginTop: 5, lineHeight: 1.45, fontStyle: "italic" }}>
-                      Leave blank to see mortgage &amp; cost estimates only.
-                    </p>
+                    <p className="az-hint">Leave blank to see mortgage &amp; cost estimates only.</p>
                     {/* Rent estimator — rendered as a component, not an IIFE */}
                     {showRentEstimate && priceVal > 0 && (
                       <RentEstimatorPanel price={priceVal} onSelect={handleRentEstimate} />
@@ -3660,9 +3848,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                 <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <button
                     onClick={() => setShowComps(v => !v)}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.text; (e.currentTarget as HTMLElement).style.color = C.text; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.rule; (e.currentTarget as HTMLElement).style.color = C.muted; }}
-                    style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", background: "transparent", border: `1px solid ${C.rule}`, color: C.muted, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s" }}
+                    className="az-btn-ghost"
                   >
                     {showComps ? "Hide Rental Comps" : "Add Rental Comps"}
                   </button>
@@ -3678,9 +3864,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                 <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <button
                     onClick={() => setShowRentometer(v => !v)}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.text; (e.currentTarget as HTMLElement).style.color = C.text; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.rule; (e.currentTarget as HTMLElement).style.color = C.muted; }}
-                    style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", background: "transparent", border: `1px solid ${C.rule}`, color: C.muted, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s" }}
+                    className="az-btn-ghost"
                   >
                     {showRentometer ? "Hide Rentometer" : "Look Up on Rentometer"}
                   </button>
@@ -3694,9 +3878,9 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
               </div>}
 
               {/* Expenses */}
-              <div>
+              <div className="az-card">
                 <SectionLabel text="Monthly Expenses" />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
                   <SmartField
                     label="Property Taxes" placeholder="350" prefix="$"
                     value={form.taxes} onChange={setField("taxes")}
@@ -3740,31 +3924,32 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                 </div>
 
                 {/* TIP callout */}
-                <div style={{ marginTop: 20, padding: "14px 16px", background: C.bg2, border: `1px solid ${C.rule}`, display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <span style={{ fontSize: 9, background: C.blue, color: "#fff", padding: "2px 7px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", flexShrink: 0, marginTop: 1 }}>TIP</span>
-                  <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
-                    Leave <strong style={{ color: C.text, fontWeight: 500 }}>Repairs</strong>, <strong style={{ color: C.text, fontWeight: 500 }}>Management</strong>, and <strong style={{ color: C.text, fontWeight: 500 }}>Insurance</strong> blank — we apply smart defaults automatically.
+                <div className="az-tip">
+                  <span style={{ fontSize: 9, background: "#2563eb", color: "#fff", padding: "2px 8px", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", borderRadius: 4, flexShrink: 0, marginTop: 1 }}>TIP</span>
+                  <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
+                    Leave <strong style={{ color: "#0f172a", fontWeight: 600 }}>Repairs</strong>, <strong style={{ color: "#0f172a", fontWeight: 600 }}>Management</strong>, and <strong style={{ color: "#0f172a", fontWeight: 600 }}>Insurance</strong> blank — we apply smart defaults automatically.
                   </p>
                 </div>
 
                 <button
                   onClick={analyze}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-                  style={{ marginTop: 24, width: "100%", padding: "15px", background: C.text, color: C.bg, border: "none", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s" }}
+                  className="az-btn-primary"
                 >
                   {isBuyer ? "Calculate My Costs" : "Analyze This Deal"}
                 </button>
               </div>
             </div>
 
-            {/* Results column */}
-            <div>
+            {/* Results column — sticky on desktop */}
+            <div style={{ position: "sticky", top: 72, alignSelf: "start" }}>
               {!result ? (
-                <div style={{ border: `1px solid ${C.rule}`, padding: "80px 48px", textAlign: "center" }}>
-                  <p style={{ fontSize: 10, color: C.rule, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>Results appear here</p>
-                  <p style={{ fontSize: 12, color: C.rule }}>
-                    {isBuyer ? "Fill in the form to see your monthly cost breakdown." : "Fill in the form and click Analyze"}
+                <div className="az-empty-state">
+                  <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.25 }}>📊</div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 8 }}>
+                    {isBuyer ? "Your cost breakdown will appear here" : "Your deal analysis will appear here"}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
+                    {isBuyer ? "Fill in your purchase details and click Calculate." : "Enter the property details and click Analyze This Deal."}
                   </p>
                 </div>
               ) : isBuyer ? (
@@ -3845,7 +4030,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processCSV(f); }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.text; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.rule; }}
-                  style={{ border: `1px solid ${C.rule}`, padding: "64px 48px", textAlign: "center", cursor: "pointer", transition: "border-color 0.15s", marginBottom: 20 }}
+                  style={{ border: `1px solid ${C.rule}`, padding: "clamp(28px,5vw,64px) clamp(14px,4vw,48px)", textAlign: "center", cursor: "pointer", transition: "border-color 0.15s", marginBottom: 20 }}
                 >
                   <p style={{ fontSize: 15, color: C.text, marginBottom: 6 }}>Drop your CSV here or click to browse</p>
                   <p style={{ fontSize: 11, color: C.faint }}>Any CSV format works — column names will be auto-detected</p>
@@ -4149,12 +4334,12 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
   }
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", color: C.text }}>
+    <div style={{ background: "transparent", minHeight: "100vh", color: C.text }}>
       {/* Detail modal */}
       {viewDeal && <DealDetailModal deal={viewDeal} onClose={() => setViewDeal(null)} />}
 
       {/* Header */}
-      <div style={{ borderBottom: `1px solid ${C.rule}`, padding: "32px 48px" }}>
+      <div style={{ borderBottom: `1px solid ${C.rule}`, padding: "clamp(16px,2.5vw,32px) clamp(14px,4vw,48px)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
             <h1 style={{ fontSize: 30, fontWeight: 500, letterSpacing: "-0.03em", margin: 0, color: C.text }}>My Deals</h1>
@@ -4168,7 +4353,7 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
         </div>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "44px 48px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "clamp(20px,3.5vw,44px) clamp(14px,4vw,48px)" }}>
 
         {/* Bulk action bar — select all + delete selected */}
         {deals.length > 0 && (
@@ -4266,7 +4451,7 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
 
         {/* Deal cards */}
         {sorted.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: C.rule }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 1, background: C.rule }}>
             {sorted.map(d => {
               const sc = d.score >= 70 ? C.green : d.score >= 45 ? C.amber : C.red;
               const isDeleting = deleteConfirm === d.id;
@@ -4304,7 +4489,7 @@ function DashboardPage({ deals, onDelete, onDeleteAll, onCompare, onAnalyze, com
                     </p>
 
                     {/* 3 key metrics */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, borderTop: `1px solid ${C.rule}`, paddingTop: 16, marginBottom: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 0, borderTop: `1px solid ${C.rule}`, paddingTop: 16, marginBottom: 16 }}>
                       <div style={{ borderRight: `1px solid ${C.rule}`, paddingRight: 8 }}>
                         <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>Cash Flow</p>
                         <p style={{ fontSize: 13, fontWeight: 600, color: d.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>
@@ -4991,16 +5176,166 @@ export default function Dealistic() {
   }
 
   return (
-    <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", background: C.bg, minHeight: "100vh" }}>
+    <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", background: `linear-gradient(160deg, ${C.gradStart} 0%, ${C.bg} 40%, ${C.gradEnd} 100%)`, minHeight: "100vh", overflowX: "hidden", width: "100%", backgroundAttachment: "fixed" }}>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { max-width: 100%; overflow-x: hidden; }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
         input[type=number] { -moz-appearance: textfield; }
         ::selection { background: ${C.blue}; color: #fff; }
         ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: ${C.bg}; }
+        ::-webkit-scrollbar-track { background: ${C.gradStart}; }
         ::-webkit-scrollbar-thumb { background: ${C.rule}; border-radius: 2px; }
+
+        /* ── Analyzer premium inputs ── */
+        .az-input {
+          width: 100%;
+          background: #fff;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 12px;
+          color: #0f172a;
+          font-size: 14px;
+          padding: 12px 14px;
+          outline: none;
+          font-family: inherit;
+          box-sizing: border-box;
+          transition: border-color 0.18s, box-shadow 0.18s;
+          -moz-appearance: textfield;
+        }
+        .az-input::placeholder { color: #94a3b8; }
+        .az-input:focus {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+        }
+        .az-input:hover:not(:focus) { border-color: #cbd5e1; }
+
+        .az-input-prefix { padding-left: 34px; }
+        .az-input-suffix { padding-right: 38px; }
+
+        .az-select {
+          width: 100%;
+          background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 12px;
+          color: #0f172a;
+          font-size: 13px;
+          padding: 12px 36px 12px 14px;
+          outline: none;
+          font-family: inherit;
+          cursor: pointer;
+          box-sizing: border-box;
+          -webkit-appearance: none;
+          appearance: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .az-select:focus {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+        }
+
+        .az-card {
+          background: rgba(255,255,255,0.92);
+          border: 1px solid rgba(226,232,240,0.8);
+          border-radius: 20px;
+          padding: 28px;
+          box-shadow: 0 1px 3px rgba(15,23,42,0.04), 0 4px 16px rgba(15,23,42,0.04);
+          transition: box-shadow 0.2s;
+        }
+
+        .az-section-label {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #64748b;
+          margin-bottom: 18px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .az-section-label::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: #e2e8f0;
+        }
+
+        .az-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 6px;
+          display: block;
+        }
+
+        .az-hint {
+          font-size: 11px;
+          color: #94a3b8;
+          margin-top: 5px;
+          line-height: 1.5;
+        }
+
+        .az-btn-primary {
+          width: 100%;
+          padding: 14px;
+          background: linear-gradient(135deg, #2563eb, #0ea5e9);
+          color: #fff;
+          border: none;
+          border-radius: 14px;
+          font-size: 14px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          cursor: pointer;
+          font-family: inherit;
+          transition: opacity 0.18s, transform 0.18s, box-shadow 0.18s;
+          box-shadow: 0 4px 14px rgba(37,99,235,0.3);
+          margin-top: 24px;
+        }
+        .az-btn-primary:hover {
+          opacity: 0.92;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(37,99,235,0.38);
+        }
+        .az-btn-primary:active { transform: translateY(0); }
+
+        .az-btn-ghost {
+          font-size: 11px;
+          letter-spacing: 0.06em;
+          background: transparent;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 8px;
+          color: #64748b;
+          padding: 5px 12px;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+        .az-btn-ghost:hover {
+          border-color: #2563eb;
+          color: #2563eb;
+          background: rgba(37,99,235,0.04);
+        }
+
+        .az-empty-state {
+          background: rgba(255,255,255,0.7);
+          border: 1.5px dashed #cbd5e1;
+          border-radius: 20px;
+          padding: 60px 32px;
+          text-align: center;
+        }
+
+        .az-tip {
+          background: linear-gradient(135deg, #eff6ff, #f0fdf4);
+          border: 1px solid #bfdbfe;
+          border-radius: 12px;
+          padding: 14px 16px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-top: 20px;
+        }
       `}</style>
 
       {/* ── Global top nav bar — in-flow, never overlaps content ── */}
@@ -5009,7 +5344,7 @@ export default function Dealistic() {
           position: "sticky", top: 0, zIndex: 200,
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "0 24px", height: 52,
-          background: C.bg, borderBottom: `1px solid ${C.rule}`,
+          background: "rgba(255,255,255,0.82)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: `1px solid ${C.rule}`,
         }}>
           {/* Left: hamburger menu button */}
           <button
@@ -5026,14 +5361,6 @@ export default function Dealistic() {
             {[0, 1, 2].map(i => (
               <span key={i} style={{ display: "block", width: 17, height: 1.5, background: C.text, borderRadius: 1 }} />
             ))}
-          </button>
-
-          {/* Center: wordmark */}
-          <button
-            onClick={() => navigate("landing")}
-            style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "0 8px" }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.text, letterSpacing: "-0.01em" }}>Dealistic</span>
           </button>
 
           {/* Right: auth */}
@@ -5073,7 +5400,7 @@ export default function Dealistic() {
 
       {/* Fullscreen menu overlay */}
       {menuOpen && !authPage && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: C.pill, display: "flex", flexDirection: "column", padding: "16px 24px" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: `linear-gradient(150deg, ${C.pill} 0%, #0f2952 50%, #0c4a3a 100%)`, display: "flex", flexDirection: "column", padding: "16px 24px" }}>
           {/* Overlay top bar — close button matches global nav height */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 52, marginBottom: 48 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: C.pillTxt, letterSpacing: "-0.01em" }}>Dealistic</span>
