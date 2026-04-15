@@ -885,11 +885,254 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
   );
 }
 
+// ─── PropertyUrlBar ───────────────────────────────────────────────────────────
+interface ParsedProperty {
+  address?: string; price?: number; bedrooms?: number; bathrooms?: number;
+  sqft?: number; propertyType?: string; yearBuilt?: number; rent?: number;
+  source?: string; confidence?: "high" | "medium" | "low";
+  warnings?: string[]; error?: string;
+}
+
+function PropertyUrlBar({ onAutofill }: { onAutofill: (data: ParsedProperty) => void }) {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<ParsedProperty | null>(null);
+
+  async function handleAnalyze() {
+    if (!url.trim()) return;
+    setError("");
+    setResult(null);
+    setLoading(true);
+
+    console.log("[Dealistic] Sending URL to backend:", url.trim());
+
+    let res: Response;
+    try {
+      res = await fetch("/api/parse-property", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+    } catch (networkErr: unknown) {
+      // This only fires when the browser cannot reach the server at all
+      // (e.g. offline, Next.js dev server not running, wrong port)
+      const msg = networkErr instanceof Error ? networkErr.message : String(networkErr);
+      console.error("[Dealistic] Network-level fetch failed:", msg);
+      setError(
+        "Cannot reach the Dealistic server. Make sure your Next.js dev server is running (npm run dev) and try again. Details: " + msg
+      );
+      setLoading(false);
+      return;
+    }
+
+    console.log("[Dealistic] Backend responded:", res.status, res.statusText);
+
+    // If Next.js returned a 404, the /api/parse-property route file is missing or misplaced
+    if (res.status === 404) {
+      setError(
+        "API route not found (404). Make sure the file /app/api/parse-property/route.ts exists and your dev server has been restarted."
+      );
+      setLoading(false);
+      return;
+    }
+
+    // Parse the JSON — guard against the server returning HTML (e.g. error pages)
+    let data: ParsedProperty & { error?: string };
+    try {
+      data = await res.json();
+    } catch (jsonErr: unknown) {
+      const rawText = "(could not read body)";
+      console.error("[Dealistic] Backend response was not JSON:", jsonErr, rawText);
+      setError(
+        `Server returned a non-JSON response (status ${res.status}). Check your terminal for Next.js errors.`
+      );
+      setLoading(false);
+      return;
+    }
+
+    console.log("[Dealistic] Parsed response:", data);
+
+    if (!res.ok || data.error) {
+      // Surface the exact backend error message — no generic wrapping
+      const msg = data.error ?? `Server error (${res.status}). Check your terminal.`;
+      console.warn("[Dealistic] Backend returned error:", msg);
+      setError(msg);
+    } else {
+      setResult(data);
+    }
+
+    setLoading(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") handleAnalyze();
+  }
+
+  function handleUse() {
+    if (!result) return;
+    onAutofill(result);
+    setResult(null);
+    setUrl("");
+    setError("");
+  }
+
+  const confColor = result?.confidence === "high" ? C.green : result?.confidence === "medium" ? C.amber : C.faint;
+
+  return (
+    <div style={{ borderBottom: `1px solid ${C.rule}`, background: C.bg2, padding: "14px 32px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        {/* URL input row */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Paste field */}
+          <div style={{ flex: 1, position: "relative" }}>
+            <input
+              type="url"
+              value={url}
+              onChange={e => { setUrl(e.target.value); setError(""); setResult(null); }}
+              onKeyDown={handleKeyDown}
+              placeholder="Paste a Zillow, Redfin, or Realtor.com link to autofill the form"
+              style={{
+                width: "100%", background: C.bg, border: `1px solid ${C.rule}`,
+                borderRadius: 8, color: C.text, fontSize: 13, padding: "9px 14px",
+                outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                transition: "border-color 0.12s",
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = C.text; }}
+              onBlur={e => { e.currentTarget.style.borderColor = C.rule; }}
+            />
+          </div>
+
+          {/* Analyze button */}
+          <button
+            onClick={handleAnalyze}
+            disabled={loading || !url.trim()}
+            onMouseEnter={e => { if (!loading && url.trim()) (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            style={{
+              flexShrink: 0, padding: "9px 18px",
+              background: (loading || !url.trim()) ? C.bg2 : C.text,
+              color: (loading || !url.trim()) ? C.faint : C.bg,
+              border: `1px solid ${(loading || !url.trim()) ? C.rule : C.text}`,
+              borderRadius: 8, fontSize: 12, fontWeight: 600,
+              letterSpacing: "0.04em", cursor: (loading || !url.trim()) ? "default" : "pointer",
+              fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap",
+              display: "flex", alignItems: "center", gap: 7,
+            }}
+          >
+            {loading ? (
+              <>
+                <span style={{
+                  width: 12, height: 12, border: `1.5px solid ${C.faint}`,
+                  borderTopColor: C.muted, borderRadius: "50%",
+                  display: "inline-block", animation: "dealistic-spin 0.7s linear infinite",
+                }} />
+                Analyzing…
+              </>
+            ) : "Analyze Property"}
+          </button>
+        </div>
+
+        {/* Spinner keyframe */}
+        <style>{`@keyframes dealistic-spin { to { transform: rotate(360deg); } }`}</style>
+
+        {/* Error */}
+        {error && (
+          <div style={{ marginTop: 10, padding: "11px 14px", background: "#fdf0ef", border: `1px solid ${C.red}`, borderRadius: 7, display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <span style={{ fontSize: 9, background: C.red, color: "#fff", padding: "2px 6px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0, marginTop: 1 }}>Error</span>
+            <div>
+              <p style={{ fontSize: 12, color: C.red, lineHeight: 1.55 }}>{error}</p>
+              {error.includes("blocked") || error.includes("403") ? (
+                <p style={{ fontSize: 11, color: "#9a4040", marginTop: 5, lineHeight: 1.5 }}>
+                  Switch to <strong>Manual</strong> mode and type the property details directly. The address may already be filled in below.
+                </p>
+              ) : error.includes("404") || error.includes("route") ? (
+                <p style={{ fontSize: 11, color: "#9a4040", marginTop: 5, lineHeight: 1.5 }}>
+                  The API route is missing. Make sure <code style={{ fontSize: 10, background: "#f5ddd8", padding: "1px 4px" }}>app/api/parse-property/route.ts</code> exists and restart <code style={{ fontSize: 10, background: "#f5ddd8", padding: "1px 4px" }}>npm run dev</code>.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Success: extracted data preview */}
+        {result && !error && (
+          <div style={{ marginTop: 12, padding: "14px 16px", background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 9, background: confColor, color: "#fff", padding: "2px 6px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  {result.confidence === "high" ? "High Confidence" : result.confidence === "medium" ? "Partial Data" : "Low Data"}
+                </span>
+                {result.source && (
+                  <span style={{ fontSize: 10, color: C.faint }}>from {result.source}</span>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { setResult(null); setUrl(""); }} style={{ fontSize: 10, color: C.faint, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em" }}>
+                  Dismiss
+                </button>
+                <button
+                  onClick={handleUse}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                  style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", background: C.text, color: C.bg, border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s" }}>
+                  Autofill Form →
+                </button>
+              </div>
+            </div>
+
+            {/* Extracted fields preview */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {result.address && <DataChip label="Address" value={result.address} />}
+              {result.price && <DataChip label="Price" value={"$" + result.price.toLocaleString()} />}
+              {result.bedrooms && <DataChip label="Beds" value={String(result.bedrooms)} />}
+              {result.bathrooms && <DataChip label="Baths" value={String(result.bathrooms)} />}
+              {result.sqft && <DataChip label="Sq Ft" value={result.sqft.toLocaleString()} />}
+              {result.yearBuilt && <DataChip label="Built" value={String(result.yearBuilt)} />}
+              {result.propertyType && <DataChip label="Type" value={result.propertyType} />}
+              {result.rent && <DataChip label="Rent Est." value={"$" + result.rent.toLocaleString() + "/mo"} />}
+            </div>
+
+            {/* Warnings */}
+            {result.warnings && result.warnings.length > 0 && (
+              <p style={{ fontSize: 10, color: C.amber, marginTop: 10, lineHeight: 1.5 }}>
+                ⚠ {result.warnings[0]}
+              </p>
+            )}
+            {/* Debug info — only in development, shown collapsed */}
+            {(result as ParsedProperty & { debugInfo?: string[] }).debugInfo && (
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ fontSize: 10, color: C.faint, cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Debug info ({(result as ParsedProperty & { debugInfo?: string[] }).debugInfo!.length} steps)
+                </summary>
+                <div style={{ marginTop: 6, padding: "8px 10px", background: C.bg2, borderRadius: 5, fontSize: 10, color: C.muted, lineHeight: 1.7, fontFamily: "monospace" }}>
+                  {(result as ParsedProperty & { debugInfo?: string[] }).debugInfo!.map((line, i) => (
+                    <div key={i}>{line}</div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DataChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 4, background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 5, padding: "4px 10px" }}>
+      <span style={{ fontSize: 9, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12, color: C.text, fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+    </div>
+  );
+}
+
 // ─── Landing ──────────────────────────────────────────────────────────────────
 function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
   return (
     <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "inherit" }}>
-      <section style={{ maxWidth: 1200, margin: "0 auto", padding: "110px 48px 64px" }}>
+      <section style={{ maxWidth: 1200, margin: "0 auto", padding: "64px 48px 64px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 80 }}>
           <div>
             <p style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: C.faint, marginBottom: 36 }}>
@@ -1610,6 +1853,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
   const [csvParsed, setCsvParsed] = useState<CsvParsed | null>(null);
   const [csvMapping, setCsvMapping] = useState<Record<string,CsvField>>({});
   const [csvStep, setCsvStep] = useState<"upload"|"map"|"preview">("upload");
+  const [urlAutofillNotice, setUrlAutofillNotice] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const rentInputRef = useRef<HTMLInputElement>(null);
@@ -1677,6 +1921,27 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
       userEmail: user?.email ?? "guest",
     });
     setSaved(true);
+  }
+
+  function handleUrlAutofill(data: ParsedProperty) {
+    const updated: Record<string, string> = { ...form };
+    if (data.address) updated.address = data.address;
+    if (data.price) updated.price = String(data.price);
+    if (data.rent) updated.rent = String(data.rent);
+    // If rent data came through, switch to investor mode for full analysis
+    if (data.rent && appMode !== "investor") setAppMode("investor");
+    setForm(updated);
+    setResult(null);
+    setSaved(false);
+    const fields = [data.address && "address", data.price && "price", data.rent && "rent estimate"].filter(Boolean);
+    setUrlAutofillNotice(
+      fields.length > 0
+        ? `Autofilled: ${fields.join(", ")}. Fill in any missing fields and click Analyze.`
+        : "Some data was found but could not be mapped to form fields."
+    );
+    setTimeout(() => setUrlAutofillNotice(null), 6000);
+    // Scroll form into view
+    window.scrollTo({ top: 200, behavior: "smooth" });
   }
 
   function handleRentEstimate(val: string) {
@@ -1790,13 +2055,13 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
       <div style={{ borderBottom: `1px solid ${C.rule}`, background: C.bg }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 32px" }}>
 
-          {/* Row 1: controls bar — mode type pill left, segmented + auth right */}
+          {/* Row 1: app mode + input mode toggles — clean, no auth overlap */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            paddingTop: 16, paddingBottom: 16,
+            paddingTop: 14, paddingBottom: 14,
             borderBottom: `1px solid ${C.rule}`,
           }}>
-            {/* Left: app mode (Home Buyer / Investor) — compact pill toggle */}
+            {/* Left: Home Buyer / Investor */}
             <div style={{ display: "flex", background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 8, padding: 3, gap: 2 }}>
               {([
                 { key: "buyer" as AppMode, label: "Home Buyer" },
@@ -1808,18 +2073,12 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                     key={opt.key}
                     onClick={() => { setAppMode(opt.key); setResult(null); }}
                     style={{
-                      padding: "6px 16px",
-                      border: "none",
-                      borderRadius: 5,
+                      padding: "6px 16px", border: "none", borderRadius: 5,
                       background: active ? C.text : "transparent",
                       color: active ? "#fff" : C.muted,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      fontSize: 11,
-                      fontWeight: active ? 600 : 500,
-                      letterSpacing: "0.04em",
-                      transition: "all 0.15s",
-                      whiteSpace: "nowrap",
+                      cursor: "pointer", fontFamily: "inherit", fontSize: 11,
+                      fontWeight: active ? 600 : 500, letterSpacing: "0.04em",
+                      transition: "all 0.15s", whiteSpace: "nowrap",
                     }}
                   >
                     {opt.label}
@@ -1828,66 +2087,24 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
               })}
             </div>
 
-            {/* Right: manual/csv segmented control + spacer + account */}
-            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              {/* Input mode toggle */}
-              <div style={{ display: "flex", background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 8, padding: 3, gap: 2 }}>
-                {(["manual", "csv"] as Mode[]).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    style={{
-                      padding: "6px 14px",
-                      border: "none",
-                      borderRadius: 5,
-                      background: mode === m ? C.text : "transparent",
-                      color: mode === m ? "#fff" : C.muted,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      fontSize: 11,
-                      fontWeight: mode === m ? 600 : 500,
-                      letterSpacing: "0.04em",
-                      transition: "all 0.15s",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {m === "manual" ? "Manual" : "CSV"}
-                  </button>
-                ))}
-              </div>
-
-              {/* Auth button — inline, no overlap */}
-              {user ? (
+            {/* Right: Manual / CSV */}
+            <div style={{ display: "flex", background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 8, padding: 3, gap: 2 }}>
+              {(["manual", "csv"] as Mode[]).map(m => (
                 <button
-                  onClick={() => onOpenLogin()}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  key={m}
+                  onClick={() => setMode(m)}
                   style={{
-                    display: "flex", alignItems: "center", gap: 7, padding: "5px 12px 5px 5px",
-                    background: "transparent", border: `1px solid ${C.rule}`, borderRadius: 999,
-                    cursor: "pointer", fontFamily: "inherit", transition: "background 0.12s",
-                  }}
-                >
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.pill, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: C.pillTxt, textTransform: "uppercase" }}>{user.name.charAt(0)}</span>
-                  </div>
-                  <span style={{ fontSize: 11, color: C.text, fontWeight: 500, letterSpacing: "0.04em" }}>Account</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => onOpenLogin()}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.text; (e.currentTarget as HTMLElement).style.color = C.bg; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.text; }}
-                  style={{
-                    padding: "6px 16px", background: "transparent", border: `1px solid ${C.rule}`,
-                    borderRadius: 999, fontSize: 11, letterSpacing: "0.06em",
-                    fontWeight: 500, cursor: "pointer", fontFamily: "inherit", color: C.text,
+                    padding: "6px 14px", border: "none", borderRadius: 5,
+                    background: mode === m ? C.text : "transparent",
+                    color: mode === m ? "#fff" : C.muted,
+                    cursor: "pointer", fontFamily: "inherit", fontSize: 11,
+                    fontWeight: mode === m ? 600 : 500, letterSpacing: "0.04em",
                     transition: "all 0.15s", whiteSpace: "nowrap",
                   }}
                 >
-                  Log In
+                  {m === "manual" ? "Manual" : "CSV Upload"}
                 </button>
-              )}
+              ))}
             </div>
           </div>
 
@@ -1903,6 +2120,17 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
 
         </div>
       </div>
+
+      {/* URL autofill bar */}
+      <PropertyUrlBar onAutofill={handleUrlAutofill} />
+
+      {/* Autofill notice */}
+      {urlAutofillNotice && (
+        <div style={{ padding: "10px 32px", background: "#f0f8f4", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 9, background: C.green, color: "#fff", padding: "2px 6px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>Done</span>
+          <p style={{ fontSize: 12, color: C.green }}>{urlAutofillNotice}</p>
+        </div>
+      )}
 
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "52px 48px" }}>
 
@@ -3357,43 +3585,55 @@ export default function Dealistic() {
         ::-webkit-scrollbar-thumb { background: ${C.rule}; border-radius: 2px; }
       `}</style>
 
-      {/* Pill menu — top left — hidden on analyzer which has its own header */}
-      {!authPage && page !== "analyzer" && (
-        <div style={{ position: "fixed", top: 20, left: 20, zIndex: 200 }}>
+      {/* ── Global top nav bar — in-flow, never overlaps content ── */}
+      {!authPage && (
+        <div style={{
+          position: "sticky", top: 0, zIndex: 200,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0 24px", height: 52,
+          background: C.bg, borderBottom: `1px solid ${C.rule}`,
+        }}>
+          {/* Left: hamburger menu button */}
           <button
             onClick={() => setMenuOpen(o => !o)}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#2e2c29"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = C.pill; }}
-            title="Menu"
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 4, background: C.pill, border: "none", borderRadius: 8, padding: "10px 12px", cursor: "pointer", fontFamily: "inherit", transition: "background 0.15s" }}
+            title="Open menu"
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 4.5, width: 36, height: 36, border: "none", borderRadius: 7,
+              background: "transparent", cursor: "pointer", transition: "background 0.15s", flexShrink: 0,
+            }}
           >
-            {[0, 1, 2].map(i => <span key={i} style={{ display: "block", width: 16, height: 1.5, background: C.pillTxt, borderRadius: 1 }} />)}
+            {[0, 1, 2].map(i => (
+              <span key={i} style={{ display: "block", width: 17, height: 1.5, background: C.text, borderRadius: 1 }} />
+            ))}
           </button>
-        </div>
-      )}
 
-      {/* Auth button — hidden on analyzer which has its own inline auth */}
-      {!authPage && page !== "analyzer" && (
-        <div style={{ position: "fixed", top: 20, right: 76, zIndex: 200 }}>
+          {/* Center: wordmark */}
+          <button
+            onClick={() => navigate("landing")}
+            style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "0 8px" }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.text, letterSpacing: "-0.01em" }}>Dealistic</span>
+          </button>
+
+          {/* Right: auth */}
           {user ? (
             <button
               onClick={() => openAuth("account")}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = C.bg; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "8px 16px",
-                background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 999,
+                display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 5px",
+                background: "transparent", border: `1px solid ${C.rule}`, borderRadius: 999,
                 cursor: "pointer", fontFamily: "inherit", transition: "background 0.12s",
               }}
             >
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: C.pill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.pillTxt, textTransform: "uppercase" }}>
-                  {user.name.charAt(0)}
-                </span>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.pill, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: C.pillTxt, textTransform: "uppercase" }}>{user.name.charAt(0)}</span>
               </div>
-              <span style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: C.text, fontWeight: 500 }}>
-                Account
-              </span>
+              <span style={{ fontSize: 11, color: C.text, fontWeight: 500, letterSpacing: "0.03em" }}>Account</span>
             </button>
           ) : (
             <button
@@ -3401,10 +3641,10 @@ export default function Dealistic() {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.text; (e.currentTarget as HTMLElement).style.color = C.bg; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.text; }}
               style={{
-                padding: "8px 18px", background: "transparent", border: `1px solid ${C.rule}`,
-                borderRadius: 999, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase",
-                fontWeight: 500, cursor: "pointer", fontFamily: "inherit", color: C.text,
-                transition: "all 0.15s",
+                padding: "6px 14px", background: "transparent", border: `1px solid ${C.rule}`,
+                borderRadius: 999, fontSize: 11, fontWeight: 500,
+                cursor: "pointer", fontFamily: "inherit", color: C.text,
+                transition: "all 0.15s", whiteSpace: "nowrap",
               }}
             >
               Log In
@@ -3415,17 +3655,19 @@ export default function Dealistic() {
 
       {/* Fullscreen menu overlay */}
       {menuOpen && !authPage && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 190, background: C.pill, display: "flex", flexDirection: "column", padding: "24px 36px" }}>
-          <div style={{ marginBottom: 80 }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: C.pill, display: "flex", flexDirection: "column", padding: "16px 24px" }}>
+          {/* Overlay top bar — close button matches global nav height */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 52, marginBottom: 48 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.pillTxt, letterSpacing: "-0.01em" }}>Dealistic</span>
             <button
               onClick={() => setMenuOpen(false)}
               title="Close menu"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, background: C.bg, border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              style={{ display: "flex", flexDirection: "column", gap: 4.5, alignItems: "center", justifyContent: "center", width: 36, height: 36, background: "transparent", border: "none", borderRadius: 7, cursor: "pointer", transition: "background 0.15s", position: "relative" }}
             >
-              <span style={{ position: "relative", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ position: "absolute", width: 16, height: 1.5, background: C.text, transform: "rotate(45deg)" }} />
-                <span style={{ position: "absolute", width: 16, height: 1.5, background: C.text, transform: "rotate(-45deg)" }} />
-              </span>
+              <span style={{ position: "absolute", width: 17, height: 1.5, background: C.pillTxt, borderRadius: 1, transform: "rotate(45deg)" }} />
+              <span style={{ position: "absolute", width: 17, height: 1.5, background: C.pillTxt, borderRadius: 1, transform: "rotate(-45deg)" }} />
             </button>
           </div>
           <nav style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
@@ -3457,17 +3699,7 @@ export default function Dealistic() {
         </div>
       )}
 
-      {/* Blue sidebar wordmark — hidden on auth pages for cleaner focus */}
-      {!authPage && (
-        <div
-          onClick={() => navigate("landing")}
-          style={{ position: "fixed", top: 0, right: 0, zIndex: 100, background: C.blue, width: 56, height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-        >
-          <span style={{ color: "#fff", fontSize: 12, fontWeight: 500, letterSpacing: "0.12em", textTransform: "uppercase", writingMode: "vertical-rl", transform: "rotate(180deg)", userSelect: "none" }}>
-            Dealistic
-          </span>
-        </div>
-      )}
+{/* Blue sidebar removed — wordmark now in the top nav bar */}
 
       {/* Auth pages — rendered full-screen, no sidebar */}
       {authPage === "login" && (
@@ -3482,7 +3714,7 @@ export default function Dealistic() {
 
       {/* Main app pages */}
       {!authPage && (
-        <div style={{ paddingRight: 56 }}>
+        <div>
           {page === "landing" && <LandingPage onAnalyze={() => navigate("analyzer")} />}
           {page === "analyzer" && <AnalyzerPage onSave={addDeal} prefill={null} user={user} onOpenLogin={() => openAuth("login")} />}
           {page === "dashboard" && (
