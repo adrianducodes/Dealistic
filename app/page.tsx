@@ -436,11 +436,12 @@ function StateSelect({
   onChange: (v: string) => void;
   width?: number | string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen]     = useState(false);
   const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [rect, setRect]     = useState<{ top: number; left: number; w: number } | null>(null);
+  const triggerRef  = useRef<HTMLDivElement>(null);
+  const listRef     = useRef<HTMLDivElement>(null);
+  const searchRef   = useRef<HTMLInputElement>(null);
 
   const selected = US_STATES.find(s => s.abbr === value);
   const filtered = search.trim()
@@ -449,50 +450,83 @@ function StateSelect({
         s.abbr.toLowerCase().includes(search.toLowerCase()))
     : US_STATES;
 
-  // Close on outside click
+  function openPanel() {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 5, left: r.left, w: r.width });
+    setOpen(true);
+    setSearch("");
+  }
+  function closePanel() { setOpen(false); setSearch(""); setRect(null); }
+
+  // Close on outside click or scroll
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false); setSearch("");
-      }
+    const close = (e: MouseEvent) => {
+      const panel = document.getElementById("ss-fixed-panel");
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
+        (!panel || !panel.contains(e.target as Node))
+      ) closePanel();
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", closePanel, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", closePanel, true);
+    };
   }, [open]);
 
-  // Focus search + scroll to selected when opening
+  // Focus search on open
   useEffect(() => {
     if (!open) return;
-    setTimeout(() => searchRef.current?.focus(), 30);
+    setTimeout(() => searchRef.current?.focus(), 20);
     if (value && listRef.current) {
       const el = listRef.current.querySelector(".ss-selected") as HTMLElement | null;
       if (el) el.scrollIntoView({ block: "nearest" });
     }
   }, [open, value]);
 
-  function pick(abbr: string) { onChange(abbr); setOpen(false); setSearch(""); }
+  function pick(abbr: string) { onChange(abbr); closePanel(); }
+
+  const panelW = Math.max(rect?.w ?? 0, 220);
 
   return (
-    <div ref={ref} style={{ position: "relative", width: width ?? "100%" }}>
+    <>
       {/* Trigger */}
-      <button
-        type="button"
-        className={"ss-trigger" + (open ? " open" : "") + (!selected ? " placeholder" : "")}
-        onClick={() => setOpen(o => !o)}
-      >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
-          {selected ? (width && Number(width) <= 100 ? selected.abbr : `${selected.abbr} — ${selected.name}`) : "State…"}
-        </span>
-        <svg className="ss-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
+      <div ref={triggerRef} style={{ position: "relative", width: width ?? "100%" }}>
+        <button
+          type="button"
+          className={"ss-trigger" + (open ? " open" : "") + (!selected ? " placeholder" : "")}
+          onClick={() => open ? closePanel() : openPanel()}
+        >
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
+            {selected
+              ? (width && Number(width) <= 100 ? selected.abbr : `${selected.abbr} — ${selected.name}`)
+              : "State…"}
+          </span>
+          <svg className="ss-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+      </div>
 
-      {/* Dropdown panel */}
-      {open && (
-        <div className="ss-panel">
-          {/* Search — icon + input as flex row, no absolute positioning */}
+      {/* Fixed-position panel — position:fixed escapes overflow:hidden on all ancestors */}
+      {open && rect && (
+        <div
+          id="ss-fixed-panel"
+          className="ss-panel"
+          style={{
+            position: "fixed",
+            top: rect.top,
+            left: rect.left,
+            minWidth: panelW,
+            width: "max-content",
+            maxWidth: Math.min(300, (typeof window !== "undefined" ? window.innerWidth : 400) - rect.left - 8),
+            zIndex: 9999,
+          }}
+        >
+          {/* Search */}
           <div className="ss-search-wrap">
             <span className="ss-search-icon">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -500,14 +534,11 @@ function StateSelect({
               </svg>
             </span>
             <input
-              ref={searchRef}
-              type="text"
-              className="ss-search"
-              placeholder="Search states…"
-              value={search}
+              ref={searchRef} type="text" className="ss-search"
+              placeholder="Search states…" value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
-                if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                if (e.key === "Escape") closePanel();
                 if (e.key === "Enter" && filtered.length === 1) pick(filtered[0].abbr);
               }}
             />
@@ -515,34 +546,29 @@ function StateSelect({
 
           {/* List */}
           <div ref={listRef} className="ss-list">
-            {/* Clear */}
-            <div
-              className={"ss-option ss-clear" + (!value ? " ss-selected" : "")}
-              onClick={() => pick("")}
-            >
+            <div className={"ss-option ss-clear" + (!value ? " ss-selected" : "")} onClick={() => pick("")}>
               Any state
             </div>
-
-            {filtered.length === 0 ? (
-              <div className="ss-option ss-empty">No results for "{search}"</div>
-            ) : filtered.map(s => {
-              const isSel = s.abbr === value;
-              return (
-                <div key={s.abbr} className={"ss-option" + (isSel ? " ss-selected" : "")} onClick={() => pick(s.abbr)}>
-                  <span className="ss-abbr">{s.abbr}</span>
-                  <span className="ss-name">{s.name}</span>
-                  {isSel && (
-                    <svg className="ss-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  )}
-                </div>
-              );
-            })}
+            {filtered.length === 0
+              ? <div className="ss-option ss-empty">No results for "{search}"</div>
+              : filtered.map(s => {
+                  const isSel = s.abbr === value;
+                  return (
+                    <div key={s.abbr} className={"ss-option" + (isSel ? " ss-selected" : "")} onClick={() => pick(s.abbr)}>
+                      <span className="ss-abbr">{s.abbr}</span>
+                      <span className="ss-name">{s.name}</span>
+                      {isSel && (
+                        <svg className="ss-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -7736,8 +7762,11 @@ export default function Dealistic() {
           position: absolute;
           top: calc(100% + 5px);
           left: 0;
-          right: 0;
-          z-index: 400;
+          right: auto;          /* don't constrain to trigger width */
+          min-width: 220px;     /* always wide enough for full state names */
+          width: max-content;   /* grow to fit content, never clip text */
+          max-width: min(320px, 90vw);
+          z-index: 9999;        /* float above all cards, overflow:hidden parents */
           border-radius: 12px;
           background: #fff;
           border: 1.5px solid #e2e8f0;
