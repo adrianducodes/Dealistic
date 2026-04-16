@@ -12,11 +12,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "Dealistic",
-  description: "Real estate deal analyzer",
+  description: "AI real estate analyzer",
   icons: {
-    icon: "/favicon.png",
+    icon: "/icon.png",
   },
 };
 
