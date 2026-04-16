@@ -6,6 +6,7 @@ const LS_SESSION  = "dealistic_session";   // { email, name, loginAt }
 const LS_USERS    = "dealistic_users";     // [{ email, name, passwordHash }]
 const LS_DEALS    = "dealistic_deals";     // SavedDeal[] keyed by userEmail
 const LS_DEFAULTS = "dealistic_defaults";  // { vacancy, repairs, mgmt, rate, state }
+const LS_THEME   = "dealistic_theme";       // "light" | "dark" | "system"
 
 function lsGet<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
@@ -22,6 +23,75 @@ function lsDel(key: string): void {
 }
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
+
+// ─── State smart defaults — vacancy + insurance estimates per state ─────────────
+// Insurance: monthly $ per $100k of home value (rough median; varies greatly)
+// Vacancy:   typical annual vacancy % for that state's rental market
+const STATE_SMART_DEFAULTS: Record<string, { insurance100k: number; vacancy: number }> = {
+  AL: { insurance100k: 6.5,  vacancy: 7  },
+  AK: { insurance100k: 7.0,  vacancy: 5  },
+  AZ: { insurance100k: 5.5,  vacancy: 6  },
+  AR: { insurance100k: 6.8,  vacancy: 8  },
+  CA: { insurance100k: 8.5,  vacancy: 5  },
+  CO: { insurance100k: 5.8,  vacancy: 5  },
+  CT: { insurance100k: 6.2,  vacancy: 6  },
+  DE: { insurance100k: 5.5,  vacancy: 6  },
+  FL: { insurance100k: 11.0, vacancy: 7  },
+  GA: { insurance100k: 6.5,  vacancy: 7  },
+  HI: { insurance100k: 5.0,  vacancy: 4  },
+  ID: { insurance100k: 5.2,  vacancy: 5  },
+  IL: { insurance100k: 6.0,  vacancy: 7  },
+  IN: { insurance100k: 5.8,  vacancy: 8  },
+  IA: { insurance100k: 6.5,  vacancy: 8  },
+  KS: { insurance100k: 8.0,  vacancy: 8  },
+  KY: { insurance100k: 5.8,  vacancy: 8  },
+  LA: { insurance100k: 12.0, vacancy: 8  },
+  ME: { insurance100k: 5.8,  vacancy: 7  },
+  MD: { insurance100k: 5.5,  vacancy: 5  },
+  MA: { insurance100k: 6.0,  vacancy: 5  },
+  MI: { insurance100k: 6.2,  vacancy: 8  },
+  MN: { insurance100k: 6.0,  vacancy: 6  },
+  MS: { insurance100k: 7.5,  vacancy: 9  },
+  MO: { insurance100k: 6.5,  vacancy: 8  },
+  MT: { insurance100k: 6.0,  vacancy: 6  },
+  NE: { insurance100k: 7.5,  vacancy: 7  },
+  NV: { insurance100k: 5.5,  vacancy: 6  },
+  NH: { insurance100k: 5.5,  vacancy: 5  },
+  NJ: { insurance100k: 6.0,  vacancy: 5  },
+  NM: { insurance100k: 6.5,  vacancy: 8  },
+  NY: { insurance100k: 6.5,  vacancy: 5  },
+  NC: { insurance100k: 6.5,  vacancy: 7  },
+  ND: { insurance100k: 6.5,  vacancy: 7  },
+  OH: { insurance100k: 5.8,  vacancy: 8  },
+  OK: { insurance100k: 8.5,  vacancy: 8  },
+  OR: { insurance100k: 5.5,  vacancy: 5  },
+  PA: { insurance100k: 5.5,  vacancy: 7  },
+  RI: { insurance100k: 6.0,  vacancy: 5  },
+  SC: { insurance100k: 7.5,  vacancy: 7  },
+  SD: { insurance100k: 6.5,  vacancy: 7  },
+  TN: { insurance100k: 6.5,  vacancy: 7  },
+  TX: { insurance100k: 9.0,  vacancy: 7  },
+  UT: { insurance100k: 5.2,  vacancy: 5  },
+  VT: { insurance100k: 5.5,  vacancy: 6  },
+  VA: { insurance100k: 5.8,  vacancy: 6  },
+  WA: { insurance100k: 5.5,  vacancy: 5  },
+  WV: { insurance100k: 5.8,  vacancy: 9  },
+  WI: { insurance100k: 5.8,  vacancy: 7  },
+  WY: { insurance100k: 5.5,  vacancy: 7  },
+};
+// Returns smart defaults for a given state + reference price
+function getStateDefaults(stateAbbr: string, price = 350000): {
+  vacancy: string; insurance: string; taxes: string;
+} {
+  const sd = stateAbbr ? (STATE_SMART_DEFAULTS[stateAbbr] ?? null) : null;
+  const taxInfo = stateAbbr ? estimateMonthlyTax(price, stateAbbr) : null;
+  return {
+    vacancy:   sd ? String(sd.vacancy) : "5",
+    insurance: sd ? String(Math.round((price / 100000) * sd.insurance100k)) : String(Math.round((price * 0.0065) / 12)),
+    taxes:     taxInfo ? String(taxInfo.monthly) : "0",
+  };
+}
+
 const C = {
   // Base — clean white/light blue-grey, like Clearbit's product UI
   bg:      "#f0f4ff",       // very light periwinkle white — page background
@@ -272,6 +342,183 @@ function PillBtn({ children, onClick }: { children: React.ReactNode; onClick?: (
     >
       {children}
     </button>
+  );
+}
+
+
+// ─── StateSelect — premium custom dropdown replacing native <select> ───────────
+function StateSelect({
+  value, onChange, style, width,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+  width?: number | string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const selected = US_STATES.find(s => s.abbr === value);
+  const filtered = search.trim()
+    ? US_STATES.filter(s =>
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        s.abbr.toLowerCase().includes(search.toLowerCase()))
+    : US_STATES;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setSearch(""); }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !value || !listRef.current) return;
+    const el = listRef.current.querySelector(".ss-selected") as HTMLElement | null;
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [open, value]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", width: width ?? "100%", ...style }}>
+      <button type="button" onClick={() => { setOpen(o => !o); setSearch(""); }}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: 8, padding: "8px 12px",
+          background: "var(--surface, #fff)",
+          border: `1.5px solid ${open ? "var(--blue, #2563eb)" : "var(--border, #e2e8f0)"}`,
+          borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontSize: 13,
+          color: selected ? "var(--text, #0f172a)" : "var(--faint, #94a3b8)",
+          boxShadow: open ? "0 0 0 3px var(--blue-ring, rgba(37,99,235,0.12))" : "none",
+          transition: "border-color 0.18s, box-shadow 0.18s", boxSizing: "border-box",
+        }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selected ? `${selected.abbr} — ${selected.name}` : "Select state\u2026"}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--faint,#94a3b8)" strokeWidth="2.5" strokeLinecap="round"
+          style={{ transition: "transform 0.18s", transform: open ? "rotate(180deg)" : "none", flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="state-dropdown" style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 400,
+          borderRadius: 14, background: "var(--surface, #fff)",
+          border: "1.5px solid var(--border, #e2e8f0)",
+          boxShadow: "0 8px 32px rgba(15,23,42,0.14)", overflow: "hidden",
+        }}>
+          <div style={{ padding: "8px 8px 6px", borderBottom: "1px solid var(--border, #f1f5f9)" }}>
+            <div style={{ position: "relative" }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--faint,#94a3b8)" strokeWidth="2.2" strokeLinecap="round"
+                style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input autoFocus type="text" placeholder="Search states\u2026" value={search} onChange={e => setSearch(e.target.value)}
+                style={{
+                  width: "100%", boxSizing: "border-box", padding: "7px 10px 7px 28px",
+                  background: "var(--bg2, #f8fafc)", border: "1.5px solid var(--border, #e2e8f0)",
+                  borderRadius: 8, fontSize: 12, color: "var(--text, #0f172a)", fontFamily: "inherit", outline: "none",
+                  transition: "border-color 0.15s",
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = "var(--blue, #2563eb)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "var(--border, #e2e8f0)"; }}
+              />
+            </div>
+          </div>
+          <div ref={listRef} style={{ maxHeight: 224, overflowY: "auto", padding: "4px 0", scrollbarWidth: "thin" }}>
+            <div onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+              style={{ padding: "8px 14px", cursor: "pointer", fontSize: 12, fontStyle: "italic",
+                color: !value ? "var(--blue,#2563eb)" : "var(--text3,#64748b)",
+                background: !value ? "var(--blue-bg,rgba(37,99,235,0.07))" : "transparent",
+                transition: "background 0.12s" }}
+              onMouseEnter={e => { if (value) (e.currentTarget as HTMLElement).style.background = "var(--bg2,#f8fafc)"; }}
+              onMouseLeave={e => { if (value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+              Any state
+            </div>
+            {filtered.length === 0 ? (
+              <div style={{ padding: "12px 14px", fontSize: 12, color: "var(--faint,#94a3b8)", textAlign: "center" }}>
+                No matches for "{search}"
+              </div>
+            ) : filtered.map(s => {
+              const isSel = s.abbr === value;
+              return (
+                <div key={s.abbr} className={"ss-option" + (isSel ? " ss-selected" : "")}
+                  onClick={() => { onChange(s.abbr); setOpen(false); setSearch(""); }}
+                  style={{
+                    padding: "8px 14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    background: isSel ? "var(--blue-bg,rgba(37,99,235,0.07))" : "transparent", transition: "background 0.12s",
+                  }}
+                  onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "var(--bg2,#f8fafc)"; }}
+                  onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                  <span style={{ fontSize: 12, color: isSel ? "var(--blue,#2563eb)" : "var(--text,#0f172a)", fontWeight: isSel ? 700 : 400 }}>
+                    <span style={{ fontWeight: 700, marginRight: 8, fontSize: 11, color: isSel ? "var(--blue,#2563eb)" : "var(--faint,#94a3b8)" }}>{s.abbr}</span>
+                    {s.name}
+                  </span>
+                  {isSel && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--blue,#2563eb)" strokeWidth="2.5" strokeLinecap="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+type ThemeMode = "light" | "dark" | "system";
+
+function useTheme(): [ThemeMode, (t: ThemeMode) => void] {
+  const [mode, setModeState] = useState<ThemeMode>(() => lsGet<ThemeMode>(LS_THEME) ?? "system");
+  useEffect(() => {
+    function apply(m: ThemeMode) {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const isDark = m === "dark" || (m === "system" && prefersDark);
+      document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+    }
+    apply(mode);
+    if (mode === "system") {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const handler = () => apply("system");
+      mq.addEventListener("change", handler);
+      return () => mq.removeEventListener("change", handler);
+    }
+  }, [mode]);
+  const set = (m: ThemeMode) => { setModeState(m); lsSet(LS_THEME, m); };
+  return [mode, set];
+}
+
+function ThemeToggle({ mode, setMode }: { mode: ThemeMode; setMode: (m: ThemeMode) => void }) {
+  const opts: { val: ThemeMode; icon: React.ReactNode; label: string }[] = [
+    { val: "light",  label: "Light",  icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> },
+    { val: "dark",   label: "Dark",   icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
+    { val: "system", label: "System", icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
+  ];
+  return (
+    <div style={{ display: "flex", background: "var(--bg2,#f1f5f9)", border: "1px solid var(--border,#e2e8f0)", borderRadius: 99, padding: 3, gap: 2 }}>
+      {opts.map(o => (
+        <button key={o.val} onClick={() => setMode(o.val)} title={o.label}
+          style={{
+            display: "flex", alignItems: "center", gap: 4, padding: "5px 9px",
+            border: "none", borderRadius: 99, cursor: "pointer", fontFamily: "inherit",
+            fontSize: 11, fontWeight: 600,
+            background: mode === o.val ? "var(--surface,#fff)" : "transparent",
+            color: mode === o.val ? "var(--text,#0f172a)" : "var(--faint,#94a3b8)",
+            boxShadow: mode === o.val ? "0 1px 4px rgba(15,23,42,0.1)" : "none",
+            transition: "all 0.15s",
+          }}>
+          {o.icon}{o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -4605,11 +4852,11 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                   <input type="text" placeholder="123 Main St, Austin TX"
                     value={form.address} onChange={e => setField("address")(e.target.value)}
                     className="az-input" style={{ flex: 1, minWidth: 0 }} />
-                  <select value={form.state} onChange={e => setField("state")(e.target.value)}
-                    className="az-select" style={{ width: 90, flexShrink: 0 }}>
-                    <option value="">State</option>
-                    {US_STATES.map(s => <option key={s.abbr} value={s.abbr}>{s.abbr}</option>)}
-                  </select>
+                  <StateSelect
+                    value={form.state}
+                    onChange={v => setField("state")(v)}
+                    width={90}
+                  />
                 </div>
                 <StateSummaryCard stateAbbr={form.state} />
               </div>
@@ -6758,13 +7005,15 @@ interface UserDefaults {
 const DEFAULT_SETTINGS: UserDefaults = { vacancy: "5", repairs: "5", mgmt: "8", rate: "7.25", state: "" };
 
 function AccountPage({
-  user, onLogOut, onNavigate, onBack, deals: allDeals,
+  user, onLogOut, onNavigate, onBack, deals: allDeals, themeMode, setThemeMode,
 }: {
   user: AuthUser;
   onLogOut: () => void;
   onNavigate: (p: Page) => void;
   onBack: () => void;
   deals: SavedDeal[];
+  themeMode: ThemeMode;
+  setThemeMode: (m: ThemeMode) => void;
 }) {
   const [showConfirm, setShowConfirm]   = useState(false);
   const [defaults, setDefaults]         = useState<UserDefaults>(() => lsGet<UserDefaults>(LS_DEFAULTS) ?? DEFAULT_SETTINGS);
@@ -7058,13 +7307,33 @@ function AccountPage({
                     </div>
                   </div>
                 ))}
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Preferred State</label>
-                  <select value={defaults.state} onChange={e => setDefaults(d => ({ ...d, state: e.target.value }))}
-                    style={{ ...inp, cursor: "pointer" }}>
-                    <option value="">Any state</option>
-                    {US_STATES.map(s => <option key={s.abbr} value={s.abbr}>{s.abbr} — {s.name}</option>)}
-                  </select>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>
+                    Preferred State
+                  </label>
+                  <StateSelect
+                    value={defaults.state}
+                    onChange={abbr => {
+                      // Auto-fill state-based smart defaults (using $350k reference price)
+                      const sd = getStateDefaults(abbr, 350000);
+                      setDefaults(d => ({
+                        ...d,
+                        state:    abbr,
+                        vacancy:  abbr ? sd.vacancy   : d.vacancy,
+                      }));
+                    }}
+                  />
+                  {defaults.state && (() => {
+                    const sd = STATE_SMART_DEFAULTS[defaults.state];
+                    const tx = STATE_TAX_RATES[defaults.state];
+                    return sd ? (
+                      <p style={{ fontSize: 10, color: "#2563eb", marginTop: 5, lineHeight: 1.5 }}>
+                        Smart estimate for {defaults.state}: vacancy ~{sd.vacancy}%
+                        {tx ? `, tax rate ~${tx.rate}%/yr` : ""}.
+                        {" "}These are pre-filled as defaults and can be overridden per deal.
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
               </div>
               <div style={{ padding: "0 20px 20px" }}>
@@ -7116,6 +7385,17 @@ function AccountPage({
               )}
             </div>
 
+            {/* Appearance */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 1px" }}>Appearance</p>
+                  <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>Light, Dark, or match your system</p>
+                </div>
+                <ThemeToggle mode={themeMode} setMode={setThemeMode} />
+              </div>
+            </div>
+
             <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.6 }}>
               Account data is stored locally in this browser.
             </p>
@@ -7128,6 +7408,7 @@ function AccountPage({
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function Dealistic() {
+  const [themeMode, setThemeMode] = useTheme();
   const [page, setPage] = useState<Page>("landing");
   const [prevPage, setPrevPage] = useState<Page>("landing");
   const [authPage, setAuthPage] = useState<AuthPage | null>(null);
@@ -7226,6 +7507,101 @@ export default function Dealistic() {
         ::-webkit-scrollbar-thumb { background: ${C.rule}; border-radius: 2px; }
 
         /* ── Analyzer premium inputs ── */
+
+        /* ── CSS Custom Properties — theme-aware ─────────────────────── */
+        :root {
+          --bg:      #f8fafc;
+          --bg2:     #f1f5f9;
+          --surface: #ffffff;
+          --border:  #e2e8f0;
+          --border2: #cbd5e1;
+          --text:    #0f172a;
+          --text2:   #475569;
+          --text3:   #64748b;
+          --faint:   #94a3b8;
+          --blue:    #2563eb;
+          --blue-bg: rgba(37,99,235,0.08);
+          --blue-ring: rgba(37,99,235,0.12);
+          --green:   #059669;
+          --red:     #dc2626;
+          --amber:   #d97706;
+          --shadow-sm: 0 1px 3px rgba(15,23,42,0.06);
+          --shadow-md: 0 4px 16px rgba(15,23,42,0.08);
+          --nav-bg:  rgba(255,255,255,0.88);
+        }
+        [data-theme="dark"] {
+          --bg:      #0f1117;
+          --bg2:     #161b27;
+          --surface: #1e2535;
+          --border:  #2d3748;
+          --border2: #374151;
+          --text:    #f1f5f9;
+          --text2:   #94a3b8;
+          --text3:   #64748b;
+          --faint:   #475569;
+          --blue:    #60a5fa;
+          --blue-bg: rgba(96,165,250,0.12);
+          --blue-ring: rgba(96,165,250,0.2);
+          --green:   #34d399;
+          --red:     #f87171;
+          --amber:   #fbbf24;
+          --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+          --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+          --nav-bg:  rgba(15,17,23,0.92);
+        }
+        /* Theme-aware overrides for global CSS classes */
+        [data-theme="dark"] body { background: var(--bg); color: var(--text); }
+        [data-theme="dark"] .az-card {
+          background: var(--surface);
+          border-color: var(--border);
+        }
+        [data-theme="dark"] .az-input {
+          background: var(--bg2);
+          border-color: var(--border);
+          color: var(--text);
+        }
+        [data-theme="dark"] .az-input:focus {
+          border-color: var(--blue);
+          box-shadow: 0 0 0 3px var(--blue-ring);
+        }
+        [data-theme="dark"] .az-input::placeholder { color: var(--faint); }
+        [data-theme="dark"] .az-select {
+          background-color: var(--bg2);
+          border-color: var(--border);
+          color: var(--text);
+        }
+        [data-theme="dark"] .az-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-ring); }
+        [data-theme="dark"] .az-btn-ghost {
+          border-color: var(--border);
+          color: var(--text2);
+        }
+        [data-theme="dark"] .az-btn-ghost:hover {
+          border-color: var(--blue);
+          color: var(--blue);
+          background: var(--blue-bg);
+        }
+        [data-theme="dark"] .az-label { color: var(--text2); }
+        [data-theme="dark"] .az-hint  { color: var(--faint); }
+        [data-theme="dark"] .az-empty-state {
+          background: var(--surface);
+          border-color: var(--border2);
+        }
+        [data-theme="dark"] .az-tip {
+          background: var(--bg2);
+          border-color: var(--border);
+        }
+        [data-theme="dark"] .az-section-label::after { background: var(--border); }
+        [data-theme="dark"] .learn-inputs-grid > div { background: var(--surface); border-color: var(--border); }
+        [data-theme="dark"] .import-method-card { background: var(--bg2); border-color: var(--border); }
+        [data-theme="dark"] .import-method-card:hover { background: var(--surface); border-color: var(--border2); }
+        /* Custom scrollbar for dark mode */
+        [data-theme="dark"] ::-webkit-scrollbar { width: 6px; }
+        [data-theme="dark"] ::-webkit-scrollbar-track { background: var(--bg2); }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+        /* StateSelect dropdown dark */
+        [data-theme="dark"] .state-dropdown { background: var(--surface); border-color: var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        [data-theme="dark"] .state-option:hover { background: var(--bg2); }
+        [data-theme="dark"] .state-option.selected { background: var(--blue-bg); color: var(--blue); }
         .az-input {
           width: 100%;
           background: #fff;
@@ -7427,6 +7803,7 @@ export default function Dealistic() {
             >
               Dealistic
             </button>
+            <ThemeToggle mode={themeMode} setMode={setThemeMode} />
           </div>
 
           {/* Right: auth */}
@@ -7663,6 +8040,8 @@ export default function Dealistic() {
           onNavigate={navigate}
           deals={deals}
           onBack={() => { setAuthPage(null); setPage(prevPage); window.scrollTo(0, 0); }}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
         />
       )}
 
