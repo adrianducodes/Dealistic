@@ -1972,156 +1972,115 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
   const rule = <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
       {/* ══ 1. SCORE HERO ══════════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
+      <div>
         <div style={{ ...sh }}><span>Deal Score</span>{rule}</div>
-
-        {/* Big number + chip */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 14 }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             <span style={{
-              fontSize: 96, fontWeight: 800, lineHeight: 0.85,
-              letterSpacing: "-0.06em", color: scoreColor,
+              fontSize: 80, fontWeight: 800, lineHeight: 0.88,
+              letterSpacing: "-0.055em", color: scoreColor,
               fontVariantNumeric: "tabular-nums", display: "block",
-            }}>
-              {r.score}
-            </span>
-            <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 6, display: "block" }}>out of 100</span>
+            }}>{r.score}</span>
+            <span style={{ fontSize: 10, color: "#94a3b8", marginTop: 5, display: "block" }}>/ 100</span>
           </div>
-          <div style={{ paddingTop: 6, flex: 1 }}>
+          <div style={{ paddingTop: 4, flex: 1 }}>
             <ScoreChip label={r.label} />
-            {/* Mini bar — visual score meter */}
-            <div style={{ marginTop: 12, height: 6, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+            <div style={{ marginTop: 10, height: 5, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
               <div style={{
                 height: "100%", borderRadius: 999, width: `${r.score}%`,
-                background: r.score >= 70
-                  ? "linear-gradient(90deg,#059669,#10b981)"
-                  : r.score >= 45
-                  ? "linear-gradient(90deg,#d97706,#f59e0b)"
+                background: r.score >= 70 ? "linear-gradient(90deg,#059669,#10b981)"
+                  : r.score >= 45 ? "linear-gradient(90deg,#d97706,#f59e0b)"
                   : "linear-gradient(90deg,#dc2626,#ef4444)",
                 transition: "width 0.6s ease",
               }} />
             </div>
-            <p style={{ fontSize: 11, color: "#475569", marginTop: 10, lineHeight: 1.65 }}>{r.reason}</p>
+            <p style={{ fontSize: 11, color: "#475569", marginTop: 8, lineHeight: 1.6 }}>{r.reason}</p>
           </div>
         </div>
-
-        {/* Score breakdown card */}
-        <div style={{
-          background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14,
-          padding: "14px 18px", display: "flex", flexDirection: "column", gap: 9,
-        }}>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "#64748b" }}>Base deal score</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>{r.baseScore}</span>
           </div>
           {stateAbbr ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "#64748b" }}>
-                State factors <span style={{ color: "#94a3b8" }}>({stateAbbr})</span>
-              </span>
+              <span style={{ fontSize: 11, color: "#64748b" }}>State factors <span style={{ color: "#94a3b8" }}>({stateAbbr})</span></span>
               {r.stateAdj !== 0 ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{
-                    fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums",
-                    color: r.stateAdj > 0 ? "#059669" : "#dc2626",
-                  }}>{r.stateAdj > 0 ? "+" : ""}{r.stateAdj}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: r.stateAdj > 0 ? "#059669" : "#dc2626" }}>{r.stateAdj > 0 ? "+" : ""}{r.stateAdj}</span>
                   <span style={{ fontSize: 10, color: "#94a3b8" }}>{r.stateAdjLabel}</span>
                 </div>
-              ) : (
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>Neutral</span>
-              )}
+              ) : <span style={{ fontSize: 11, color: "#94a3b8" }}>Neutral</span>}
             </div>
           ) : (
-            <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>
-              Select a state to factor in market conditions
-            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>Select a state to factor in market conditions</div>
           )}
           <div style={{ height: 1, background: "#e2e8f0" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Final score</span>
-            <span style={{ fontSize: 16, fontWeight: 900, color: scoreColor, fontVariantNumeric: "tabular-nums" }}>{r.score}</span>
+            <span style={{ fontSize: 15, fontWeight: 900, color: scoreColor, fontVariantNumeric: "tabular-nums" }}>{r.score}</span>
           </div>
         </div>
       </div>
 
       {/* ══ 2. KPI CARDS ═══════════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
+      <div>
         <div style={{ ...sh }}><span>Key Metrics</span>{rule}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
           {[
-            { label: "Monthly Cash Flow", value: fmtSigned(r.cashflow), sub: `${fmtSigned(r.annualCashflow)}/yr`, color: r.cashflow >= 0 ? C.green : C.red },
-            { label: "Cap Rate",          value: r.capRate.toFixed(2) + "%", sub: r.capRate >= 6 ? "Above benchmark" : r.capRate >= 4 ? "Average" : "Below average", color: r.capRate >= 6 ? C.green : r.capRate < 4 ? C.red : "#475569" },
-            { label: "Cash-on-Cash",      value: r.coc.toFixed(2) + "%",    sub: r.coc >= 8 ? "Excellent" : r.coc >= 5 ? "Acceptable" : "Below target", color: r.coc >= 8 ? C.green : r.coc < 3 ? C.red : "#475569" },
-            { label: "DSCR",              value: r.dscr.toFixed(2),          sub: r.dscr >= 1.25 ? "Healthy coverage" : r.dscr >= 1.0 ? "Breakeven" : "Negative carry", color: r.dscr >= 1.25 ? C.green : r.dscr < 1.0 ? C.red : "#475569" },
+            { label: "Cash Flow / mo", value: fmtSigned(r.cashflow), sub: `${fmtSigned(r.annualCashflow)}/yr`, color: r.cashflow >= 0 ? C.green : C.red },
+            { label: "Cap Rate",       value: r.capRate.toFixed(2) + "%", sub: r.capRate >= 6 ? "Above benchmark" : r.capRate >= 4 ? "Average" : "Below avg", color: r.capRate >= 6 ? C.green : r.capRate < 4 ? C.red : "#475569" },
+            { label: "Cash-on-Cash",   value: r.coc.toFixed(2) + "%", sub: r.coc >= 8 ? "Excellent" : r.coc >= 5 ? "Acceptable" : "Below target", color: r.coc >= 8 ? C.green : r.coc < 3 ? C.red : "#475569" },
+            { label: "DSCR",           value: r.dscr.toFixed(2), sub: r.dscr >= 1.25 ? "Healthy coverage" : r.dscr >= 1.0 ? "Breakeven" : "Negative carry", color: r.dscr >= 1.25 ? C.green : r.dscr < 1.0 ? C.red : "#475569" },
           ].map(card => (
-            <div key={card.label} style={{
-              background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14,
-              padding: "18px 18px 16px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)",
-            }}>
-              <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{card.label}</p>
-              <p style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.04em", color: card.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{card.value}</p>
-              <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 7 }}>{card.sub}</p>
+            <div key={card.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+              <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>{card.label}</p>
+              <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.04em", color: card.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{card.value}</p>
+              <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>{card.sub}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* ══ 3. AI INVESTMENT INSIGHT ═══════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
+      <div>
         <div style={{ ...sh }}><span>AI Investment Insight</span>{rule}</div>
-        <div style={{
-          background: "linear-gradient(135deg,#eff6ff,#f0fdf4)",
-          border: "1px solid #bfdbfe", borderRadius: 14, padding: "18px 20px",
-          display: "flex", gap: 14, alignItems: "flex-start",
-        }}>
-          <div style={{
-            flexShrink: 0, width: 32, height: 32, borderRadius: 8,
-            background: "linear-gradient(135deg,#2563eb,#059669)",
-            display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1,
-          }}>
-            <span style={{ fontSize: 15 }}>✦</span>
+        <div style={{ background: "linear-gradient(135deg,#eff6ff,#f0fdf4)", border: "1px solid #bfdbfe", borderRadius: 12, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#2563eb,#059669)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+            <span style={{ fontSize: 13 }}>✦</span>
           </div>
-          <p style={{ fontSize: 13, color: "#1e3a5f", lineHeight: 1.75, margin: 0 }}>{narrative}</p>
+          <p style={{ fontSize: 12, color: "#1e3a5f", lineHeight: 1.7, margin: 0 }}>{narrative}</p>
         </div>
       </div>
 
-      {/* ══ 4. BIGGEST DRIVERS ═════════════════════════════════════════════════ */}
+      {/* ══ 4. SCORE DRIVERS ═══════════════════════════════════════════════════ */}
       {drivers.length > 0 && (
-        <div style={{ marginBottom: 32 }}>
+        <div>
           <div style={{ ...sh }}><span>Score Drivers</span>{rule}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
             {drivers.map((drv, i) => {
               const positive = drv.pts > 0;
               const barWidth = Math.min(100, Math.abs(drv.pts) / 20 * 100);
               return (
-                <div key={i} style={{
-                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
-                  padding: "13px 16px",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <div>
+                <div key={i} style={{ padding: "10px 14px", borderBottom: i < drivers.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ minWidth: 0, flex: 1, marginRight: 10 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>{drv.label}</span>
-                      <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>{drv.note}</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 7 }}>{drv.note}</span>
                     </div>
                     <span style={{
-                      fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums",
+                      fontSize: 11, fontWeight: 800, fontVariantNumeric: "tabular-nums",
                       color: positive ? "#059669" : "#dc2626",
                       background: positive ? "#f0fdf4" : "#fff1f2",
                       border: `1px solid ${positive ? "#bbf7d0" : "#fecdd3"}`,
-                      borderRadius: 6, padding: "2px 8px", flexShrink: 0, marginLeft: 12,
+                      borderRadius: 5, padding: "1px 7px", flexShrink: 0,
                     }}>{positive ? "+" : ""}{drv.pts} pts</span>
                   </div>
-                  {/* Impact bar */}
-                  <div style={{ height: 4, borderRadius: 999, background: "#f1f5f9", overflow: "hidden" }}>
-                    <div style={{
-                      height: "100%", borderRadius: 999,
-                      width: `${barWidth}%`,
-                      background: positive ? "#10b981" : "#f87171",
-                      transition: "width 0.5s ease",
-                    }} />
+                  <div style={{ height: 3, borderRadius: 999, background: "#f1f5f9", overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 999, width: `${barWidth}%`, background: positive ? "#10b981" : "#f87171", transition: "width 0.5s ease" }} />
                   </div>
                 </div>
               );
@@ -2132,30 +2091,21 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
 
       {/* ══ 5. OPTIMIZATION SUGGESTIONS ═══════════════════════════════════════ */}
       {opts.length > 0 && (
-        <div style={{ marginBottom: 32 }}>
+        <div>
           <div style={{ ...sh }}><span>Optimization Suggestions</span>{rule}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
             {opts.map((opt, i) => (
-              <div key={i} style={{
-                background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
-                padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: 14,
-              }}>
-                <div style={{
-                  flexShrink: 0, width: 28, height: 28, borderRadius: 8,
-                  background: "#f0fdf4", border: "1px solid #bbf7d0",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <span style={{ fontSize: 13 }}>↑</span>
+              <div key={i} style={{ padding: "10px 14px", borderBottom: i < opts.length - 1 ? "1px solid #f1f5f9" : "none", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 12 }}>↑</span>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{opt.action}</p>
-                  <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>{opt.detail}</p>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 2 }}>{opt.action}</p>
+                  <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>{opt.detail}</p>
                 </div>
-                <div style={{
-                  flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#059669",
-                  background: "#f0fdf4", border: "1px solid #bbf7d0",
-                  borderRadius: 8, padding: "4px 10px", whiteSpace: "nowrap",
-                }}>+{opt.scoreDelta} pts</div>
+                <div style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#059669", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
+                  +{opt.scoreDelta} pts
+                </div>
               </div>
             ))}
           </div>
@@ -2163,52 +2113,52 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
       )}
 
       {/* ══ 6. INCOME vs EXPENSES ══════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
+      <div>
         <div style={{ ...sh }}><span>Income vs. Expenses</span>{rule}</div>
         <BarChart income={r.effectiveRent} expenses={r.totalMonthly} d={d} />
       </div>
 
       {/* ══ 7. MONTHLY BREAKDOWN ═══════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
+      <div>
         <div style={{ ...sh }}><span>Monthly Breakdown</span>{rule}</div>
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden" }}>
-          {/* Income */}
-          <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-            <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 0 }}>Income</p>
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+          {/* Income sub-header */}
+          <div style={{ padding: "8px 16px", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
+            <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>Income</span>
           </div>
-          <div style={{ padding: "6px 18px" }}>
+          <div style={{ padding: "4px 16px" }}>
             <MetRow label="Gross Rent" value={fmt(d.rent)} />
             <MetRow label="Vacancy Loss" value={"−" + fmt(vacancyLoss)} accent="red" />
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Effective Rent</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmt(r.effectiveRent)}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmt(r.effectiveRent)}</span>
             </div>
           </div>
-          {/* Expenses */}
-          <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", borderTop: "1px solid #e2e8f0", background: "#f8fafc" }}>
-            <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 0 }}>Expenses</p>
+          {/* Expenses sub-header */}
+          <div style={{ padding: "8px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #f1f5f9" }}>
+            <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>Expenses</span>
           </div>
-          <div style={{ padding: "6px 18px" }}>
+          <div style={{ padding: "4px 16px" }}>
             <MetRow label="Mortgage (P&I)" value={fmt(r.mortgage)} />
             {d.taxes > 0 && <MetRow label="Property Taxes" value={fmt(d.taxes)} />}
             {d.insurance > 0 && <MetRow label="Insurance" value={fmt(d.insurance)} />}
             {d.hoa > 0 && <MetRow label="HOA" value={fmt(d.hoa)} />}
-            {d.repairs > 0 && <MetRow label="Repairs & Maintenance" value={fmt(d.repairs)} />}
-            {d.mgmt > 0 && <MetRow label="Property Management" value={fmt(d.mgmt)} />}
+            {d.repairs > 0 && <MetRow label="Repairs & Maint." value={fmt(d.repairs)} />}
+            {d.mgmt > 0 && <MetRow label="Mgmt" value={fmt(d.mgmt)} />}
             {d.other > 0 && <MetRow label="Other" value={fmt(d.other)} />}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Total Expenses</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.red, fontVariantNumeric: "tabular-nums" }}>{fmt(r.totalMonthly)}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.red, fontVariantNumeric: "tabular-nums" }}>{fmt(r.totalMonthly)}</span>
             </div>
           </div>
-          {/* Net */}
+          {/* Net cash flow */}
           <div style={{
-            padding: "16px 18px", borderTop: "2px solid #e2e8f0",
+            padding: "11px 16px", borderTop: "1.5px solid #e2e8f0",
             display: "flex", justifyContent: "space-between", alignItems: "center",
             background: r.cashflow >= 0 ? "#f0fdf4" : "#fff1f2",
           }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", letterSpacing: "0.03em" }}>Net Cash Flow / mo</span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: r.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>{fmtSigned(r.cashflow)}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Net Cash Flow / mo</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: r.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>{fmtSigned(r.cashflow)}</span>
           </div>
         </div>
       </div>
@@ -2224,11 +2174,11 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
           onMouseEnter={e => { if (!saved) { (e.currentTarget as HTMLElement).style.opacity = "0.88"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; } }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
           style={{
-            width: "100%", padding: "14px",
+            width: "100%", padding: "13px",
             background: saved ? "#f1f5f9" : "linear-gradient(135deg,#2563eb,#0ea5e9)",
             color: saved ? "#94a3b8" : "#fff",
             border: `1.5px solid ${saved ? "#e2e8f0" : "transparent"}`,
-            borderRadius: 14, fontSize: 13, letterSpacing: "0.06em",
+            borderRadius: 12, fontSize: 13, letterSpacing: "0.06em",
             fontWeight: 700, cursor: saved ? "default" : "pointer",
             fontFamily: "inherit", transition: "all 0.18s",
             boxShadow: saved ? "none" : "0 4px 14px rgba(37,99,235,0.3)",
@@ -2237,24 +2187,12 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
           {saved ? "✓  Saved to Dashboard" : "Save Deal →"}
         </button>
       ) : (
-        <div style={{
-          background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14,
-          padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-        }}>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", marginBottom: 3 }}>Want to save this deal?</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", marginBottom: 2 }}>Want to save this deal?</p>
             <p style={{ fontSize: 11, color: "#64748b" }}>Log in to save deals to your dashboard.</p>
           </div>
-          <button
-            onClick={onOpenLogin}
-            style={{
-              flexShrink: 0, padding: "9px 20px",
-              background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
-              color: "#fff", border: "none", borderRadius: 10,
-              fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-              transition: "opacity 0.15s", boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-            }}
-          >
+          <button onClick={onOpenLogin} style={{ flexShrink: 0, padding: "8px 18px", background: "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff", border: "none", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.15s", boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
             Log In
           </button>
         </div>
@@ -2263,849 +2201,161 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
   );
 }
 
-// ─── PropertyUrlBar ───────────────────────────────────────────────────────────
-interface ParsedProperty {
-  address?: string; price?: number; bedrooms?: number; bathrooms?: number;
-  sqft?: number; propertyType?: string; yearBuilt?: number; rent?: number;
-  source?: string; confidence?: "high" | "medium" | "low";
-  rawUrl?: string; warnings?: string[]; error?: string;
-  debugInfo?: string[];
-}
 
-// Site-specific human-friendly messages (no mention of "403", "blocked", "bot")
-const SITE_BLOCKED_MESSAGES: Record<string, { headline: string; sub: string }> = {
-  Zillow: {
-    headline: "We couldn't fully import this Zillow listing, but we found the address.",
-    sub:      "Zillow limits automatic data access. Please fill in the remaining property details manually.",
-  },
-  Redfin: {
-    headline: "We couldn't fully import this Redfin listing, but we found the address.",
-    sub:      "Please fill in the price and other details to complete your analysis.",
-  },
-  "Realtor.com": {
-    headline: "We couldn't fully import this Realtor.com listing, but we found the address.",
-    sub:      "Please fill in the remaining property details manually.",
-  },
-  Trulia: {
-    headline: "We couldn't fully import this Trulia listing, but we found the address.",
-    sub:      "Please fill in the price and details to continue.",
-  },
-  Unknown: {
-    headline: "We couldn't fully import this listing, but we found the address.",
-    sub:      "Please fill in the remaining property details manually.",
-  },
-};
 
-function PropertyUrlBar({ onAutofill }: { onAutofill: (data: ParsedProperty) => void }) {
-  const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [hardError, setHardError] = useState(""); // infra errors: 404, offline, non-JSON
-  const [result, setResult] = useState<ParsedProperty | null>(null);
-  const [partialResult, setPartialResult] = useState<ParsedProperty | null>(null); // blocked but has partial data
 
-  function reset() {
-    setHardError("");
-    setResult(null);
-    setPartialResult(null);
-  }
-
-  async function handleAnalyze() {
-    if (!url.trim()) return;
-    reset();
-    setLoading(true);
-    console.log("[Dealistic] → POST /api/parse-property", url.trim());
-
-    let res: Response;
-    try {
-      res = await fetch("/api/parse-property", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-    } catch (netErr: unknown) {
-      const msg = netErr instanceof Error ? netErr.message : String(netErr);
-      console.error("[Dealistic] Network error:", msg);
-      setHardError("Cannot reach the server. Make sure npm run dev is running. (" + msg + ")");
-      setLoading(false);
-      return;
-    }
-
-    console.log("[Dealistic] ← status:", res.status);
-
-    if (res.status === 404) {
-      setHardError("API route not found. Create app/api/parse-property/route.ts and restart the dev server.");
-      setLoading(false);
-      return;
-    }
-
-    let data: ParsedProperty & { error?: string };
-    try {
-      data = await res.json();
-    } catch (jsonErr) {
-      console.error("[Dealistic] Non-JSON response:", jsonErr);
-      setHardError(`Server returned a non-JSON response (${res.status}). Check your terminal.`);
-      setLoading(false);
-      return;
-    }
-
-    console.log("[Dealistic] Parsed:", data);
-
-    // 422 = blocked but may have partial URL-based data → soft amber panel
-    if (res.status === 422) {
-      // Treat as partial result — autofill what we have, show soft message
-      setPartialResult({ ...data, error: undefined });
-      setLoading(false);
-      return;
-    }
-
-    if (!res.ok || data.error) {
-      // Only truly hard errors (400 bad URL, 500 crash) get a red banner
-      const isBlockedError = (data.error ?? "").toLowerCase().includes("block") ||
-                             (data.error ?? "").toLowerCase().includes("403");
-      if (isBlockedError) {
-        // Even on a hard block, treat as partial if the data has an address
-        if (data.address) {
-          setPartialResult({ ...data, error: undefined });
-        } else {
-          setPartialResult({ source: data.source ?? "Unknown", confidence: "low", rawUrl: url, warnings: data.warnings ?? [] });
-        }
-      } else {
-        setHardError(data.error ?? `Server error (${res.status}).`);
-      }
-      setLoading(false);
-      return;
-    }
-
-    setResult(data);
-    setLoading(false);
-  }
-
-  function handleUse(data: ParsedProperty) {
-    onAutofill(data);
-    reset();
-    setUrl("");
-  }
-
-  const confColor = result?.confidence === "high" ? C.green : result?.confidence === "medium" ? C.amber : C.faint;
-
-  const siteBlockedMsg = partialResult
-    ? (SITE_BLOCKED_MESSAGES[partialResult.source ?? "Unknown"] ?? SITE_BLOCKED_MESSAGES.Unknown)
-    : "";
-
-  return (
-    <div style={{ borderBottom: `1px solid ${C.rule}`, background: C.bg2, padding: "14px 32px" }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <style>{`@keyframes dealistic-spin { to { transform: rotate(360deg); } }`}</style>
-
-        {/* URL input row */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="url"
-            value={url}
-            onChange={e => { setUrl(e.target.value); reset(); }}
-            onKeyDown={e => { if (e.key === "Enter") handleAnalyze(); }}
-            placeholder="Paste a Zillow, Redfin, or Realtor.com link to autofill the form"
-            style={{
-              flex: 1, background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 8,
-              color: C.text, fontSize: 13, padding: "9px 14px", outline: "none",
-              fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.12s",
-            }}
-            onFocus={e => { e.currentTarget.style.borderColor = C.text; }}
-            onBlur={e => { e.currentTarget.style.borderColor = C.rule; }}
-          />
-          <button
-            onClick={handleAnalyze}
-            disabled={loading || !url.trim()}
-            onMouseEnter={e => { if (!loading && url.trim()) (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            style={{
-              flexShrink: 0, padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-              letterSpacing: "0.04em", fontFamily: "inherit", whiteSpace: "nowrap",
-              display: "flex", alignItems: "center", gap: 7, transition: "all 0.15s",
-              background: (loading || !url.trim()) ? C.bg : C.text,
-              color:      (loading || !url.trim()) ? C.faint : C.bg,
-              border: `1px solid ${(loading || !url.trim()) ? C.rule : C.text}`,
-              cursor: (loading || !url.trim()) ? "default" : "pointer",
-            }}
-          >
-            {loading
-              ? <><span style={{ width: 12, height: 12, border: `1.5px solid ${C.faint}`, borderTopColor: C.muted, borderRadius: "50%", display: "inline-block", animation: "dealistic-spin 0.7s linear infinite" }} /> Analyzing…</>
-              : "Analyze Property"
-            }
-          </button>
-        </div>
-
-        {/* ── HARD ERROR — infra / bad URL only ── */}
-        {hardError && (
-          <div style={{ marginTop: 10, padding: "11px 14px", background: "#fdf0ef", border: `1px solid ${C.red}`, borderRadius: 7, display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ fontSize: 9, background: C.red, color: "#fff", padding: "2px 6px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0, marginTop: 1 }}>Error</span>
-            <div>
-              <p style={{ fontSize: 12, color: C.red, lineHeight: 1.55 }}>{hardError}</p>
-              {hardError.includes("404") && (
-                <p style={{ fontSize: 11, color: "#9a4040", marginTop: 5 }}>
-                  Create <code style={{ background: "#f5ddd8", padding: "1px 4px", fontSize: 10 }}>app/api/parse-property/route.ts</code> and run <code style={{ background: "#f5ddd8", padding: "1px 4px", fontSize: 10 }}>npm run dev</code>.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── PARTIAL / BLOCKED — calm info panel, not an error ── */}
-        {partialResult && (() => {
-          const msgs = SITE_BLOCKED_MESSAGES[partialResult.source ?? "Unknown"] ?? SITE_BLOCKED_MESSAGES.Unknown;
-          const missingList = [
-            !partialResult.price    && "Purchase Price",
-            !partialResult.bedrooms && "Beds",
-            !partialResult.bathrooms && "Baths",
-            !partialResult.sqft     && "Sq Ft",
-          ].filter(Boolean) as string[];
-          return (
-            <div style={{ marginTop: 10, background: "#f5f7ff", border: "1px solid #c8d0f0", borderRadius: 10, overflow: "hidden" }}>
-              {/* Header */}
-              <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontSize: 9, background: "#4a6cf7", color: "#fff", padding: "2px 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 3 }}>
-                      Address Found
-                    </span>
-                    {partialResult.source && (
-                      <span style={{ fontSize: 10, color: "#6070b0" }}>from {partialResult.source}</span>
-                    )}
-                  </div>
-                  <p style={{ fontSize: 13, fontWeight: 500, color: "#1a2050", lineHeight: 1.5, marginBottom: 3 }}>
-                    {msgs.headline}
-                  </p>
-                  <p style={{ fontSize: 11, color: "#6070a0", lineHeight: 1.55 }}>
-                    {msgs.sub}
-                  </p>
-                </div>
-                <button
-                  onClick={() => reset()}
-                  style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", color: "#8090c0", fontSize: 18, lineHeight: 1, padding: "2px 4px" }}
-                  title="Dismiss"
-                >×</button>
-              </div>
-
-              {/* What we extracted */}
-              <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {partialResult.address && (
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, background: "#eef0ff", border: "1px solid #c8d0f0", borderRadius: 5, padding: "4px 10px" }}>
-                    <span style={{ fontSize: 9, color: "#8090c0", letterSpacing: "0.08em", textTransform: "uppercase" }}>Address</span>
-                    <span style={{ fontSize: 12, color: "#1a2050", fontWeight: 500 }}>{partialResult.address}</span>
-                  </div>
-                )}
-                {partialResult.price && (
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, background: "#eef0ff", border: "1px solid #c8d0f0", borderRadius: 5, padding: "4px 10px" }}>
-                    <span style={{ fontSize: 9, color: "#8090c0", letterSpacing: "0.08em", textTransform: "uppercase" }}>Price</span>
-                    <span style={{ fontSize: 12, color: "#1a2050", fontWeight: 500 }}>${partialResult.price.toLocaleString()}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Missing fields + CTA */}
-              <div style={{ padding: "12px 16px", background: "#eef0ff", borderTop: "1px solid #c8d0f0", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                <div>
-                  <p style={{ fontSize: 11, color: "#4050a0", marginBottom: 4, fontWeight: 500 }}>
-                    Still needed to analyze this deal:
-                  </p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {missingList.map(f => (
-                      <span key={f} style={{ fontSize: 10, color: "#4a6cf7", background: "#dde2ff", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>{f}</span>
-                    ))}
-                    {missingList.length === 0 && (
-                      <span style={{ fontSize: 10, color: "#4a6cf7" }}>All key fields found ✓</span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleUse(partialResult)}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#3050e0"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#4a6cf7"; }}
-                  style={{ flexShrink: 0, padding: "8px 18px", background: "#4a6cf7", color: "#fff", border: "none", borderRadius: 7, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", cursor: "pointer", fontFamily: "inherit", transition: "background 0.15s" }}
-                >
-                  Autofill Form →
-                </button>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── FULL SUCCESS — green/amber confidence panel ── */}
-        {result && (
-          <div style={{ marginTop: 10, padding: "14px 16px", background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 9, background: confColor, color: "#fff", padding: "2px 7px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  {result.confidence === "high" ? "Full Import" : result.confidence === "medium" ? "Partial Data" : "Basic Data"}
-                </span>
-                {result.source && <span style={{ fontSize: 10, color: C.faint }}>from {result.source}</span>}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { reset(); setUrl(""); }} style={{ fontSize: 10, color: C.faint, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Dismiss</button>
-                <button
-                  onClick={() => handleUse(result)}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-                  style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", background: C.text, color: C.bg, border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s" }}
-                >
-                  Autofill Form →
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {result.address      && <DataChip label="Address"  value={result.address} />}
-              {result.price        && <DataChip label="Price"    value={"$" + result.price.toLocaleString()} />}
-              {result.bedrooms     && <DataChip label="Beds"     value={String(result.bedrooms)} />}
-              {result.bathrooms    && <DataChip label="Baths"    value={String(result.bathrooms)} />}
-              {result.sqft         && <DataChip label="Sq Ft"    value={result.sqft.toLocaleString()} />}
-              {result.yearBuilt    && <DataChip label="Built"    value={String(result.yearBuilt)} />}
-              {result.propertyType && <DataChip label="Type"     value={result.propertyType} />}
-              {result.rent         && <DataChip label="Rent Est." value={"$" + result.rent.toLocaleString() + "/mo"} />}
-            </div>
-
-            {result.warnings && result.warnings.length > 0 && (
-              <p style={{ fontSize: 10, color: C.amber, marginTop: 10, lineHeight: 1.5 }}>⚠ {result.warnings[0]}</p>
-            )}
-
-            {result.debugInfo && (
-              <details style={{ marginTop: 10 }}>
-                <summary style={{ fontSize: 10, color: C.faint, cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                  Debug info
-                </summary>
-                <div style={{ marginTop: 6, padding: "8px 10px", background: C.bg2, borderRadius: 5, fontSize: 10, color: C.muted, lineHeight: 1.7, fontFamily: "monospace" }}>
-                  {result.debugInfo!.map((l, i) => <div key={i}>{l}</div>)}
-                </div>
-              </details>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DataChip({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 4, background: C.bg2, border: `1px solid ${C.rule}`, borderRadius: 5, padding: "4px 10px" }}>
-      <span style={{ fontSize: 9, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12, color: C.text, fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
-    </div>
-  );
-}
-
-// ─── Showcase Section — 6 rich illustrated feature cards ─────────────────────
-
-// Shared showcase card shell
-// ─── Showcase cards — rich animated feature demonstrations ───────────────────
-
-// Reusable scroll-visibility hook
-function useInView(threshold = 0.25) {
+// ─── useInView — scroll-triggered visibility hook ─────────────────────────────
+function useInView(threshold = 0.2) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const el = ref.current; if (!el) return;
+    const el = ref.current;
+    if (!el) return;
     const obs = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
       { threshold }
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [threshold]);
+  }, []);
   return { ref, visible };
 }
 
-// Shared showcase card shell — larger visual area, richer text
-function ShowCard({
-  title, desc, tag, tagColor, children, delay = 0,
-}: {
-  title: string; desc: string; tag: string; tagColor: string;
-  children: React.ReactNode; delay?: number;
+// ─── Showcase Section ─────────────────────────────────────────────────────────
+// Feature preview cards used on the landing page
+
+function ShowCard({ title, tag, tagColor, desc, delay, children }: {
+  title: string; tag: string; tagColor: string; desc: string; delay: number; children: React.ReactNode;
 }) {
-  const [hov, setHov] = useState(false);
+  const [hovered, setHovered] = React.useState(false);
   return (
     <FadeIn delay={delay}>
       <div
-        onMouseEnter={() => setHov(true)}
-        onMouseLeave={() => setHov(false)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{
-          background: "rgba(255,255,255,0.88)",
-          border: `1px solid ${hov ? C.blue + "40" : "rgba(203,213,225,0.5)"}`,
-          borderRadius: 28,
-          overflow: "hidden",
-          display: "flex", flexDirection: "column",
-          backdropFilter: "blur(12px)",
-          transition: "box-shadow 0.25s, transform 0.25s, border-color 0.25s",
-          boxShadow: hov
-            ? "0 20px 60px rgba(37,99,235,0.16), 0 4px 16px rgba(14,165,233,0.10)"
-            : "0 2px 12px rgba(14,165,233,0.07)",
-          transform: hov ? "translateY(-6px) scale(1.005)" : "none",
+          background: "rgba(255,255,255,0.92)", border: `1px solid ${C.rule}`,
+          borderRadius: 20, overflow: "hidden",
+          boxShadow: hovered ? "0 8px 32px rgba(15,23,42,0.12)" : "0 2px 8px rgba(15,23,42,0.05)",
+          transform: hovered ? "translateY(-3px)" : "none",
+          transition: "all 0.22s cubic-bezier(.22,1,.36,1)",
         }}
       >
-        {/* Visual demo area */}
-        <div style={{
-          background: `linear-gradient(160deg, ${C.gradStart} 0%, ${C.gradMid} 60%, ${C.gradEnd} 100%)`,
-          padding: "32px 28px 24px",
-          minHeight: 220,
-          position: "relative",
-          overflow: "hidden",
-        }}>
-          {/* Tag badge */}
-          <span style={{
-            position: "absolute", top: 18, right: 18,
-            fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
-            background: tagColor + "18", color: tagColor,
-            border: `1px solid ${tagColor}40`,
-            borderRadius: 999, padding: "3px 10px",
-          }}>{tag}</span>
+        {/* Preview area */}
+        <div style={{ background: C.bg2, borderBottom: `1px solid ${C.rule}`, padding: "28px 24px 20px", minHeight: 130 }}>
           {children}
         </div>
-        {/* Text block */}
-        <div style={{ padding: "22px 28px 28px", borderTop: `1px solid ${C.rule}`, background: C.bg }}>
-          <p style={{
-            fontSize: 15, fontWeight: 700, color: C.text,
-            letterSpacing: "-0.025em", marginBottom: 7, lineHeight: 1.25,
-          }}>{title}</p>
-          <p style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.72 }}>{desc}</p>
+        {/* Text */}
+        <div style={{ padding: "18px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <p style={{ fontSize: 14, fontWeight: 800, color: C.text, letterSpacing: "-0.02em", flex: 1 }}>{title}</p>
+            <span style={{ fontSize: 9, fontWeight: 800, color: tagColor, background: tagColor + "14", border: `1px solid ${tagColor}30`, borderRadius: 999, padding: "2px 9px", letterSpacing: "0.08em", textTransform: "uppercase" }}>{tag}</span>
+          </div>
+          <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.65, margin: 0 }}>{desc}</p>
         </div>
       </div>
     </FadeIn>
   );
 }
 
-// ─── Card 1: Financial Breakdown ──────────────────────────────────────────────
 function CardFinancial() {
-  const { ref, visible } = useInView();
-  const bars = [
-    { label: "Gross Rent",    val: "$3,450", w: 100, color: C.green },
-    { label: "Mortgage P&I", val: "$2,480", w: 72,  color: "#4a6cf7" },
-    { label: "Tax & Ins.",   val: "$610",   w: 18,  color: C.amber  },
-  ];
   return (
-    <div ref={ref}>
-      {/* Two headline numbers */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 22 }}>
-        <div>
-          <p style={{ fontSize: 10, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 3 }}>Purchase Price</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "-0.045em", lineHeight: 1 }}>$425,000</p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {[
+        { label: "Mortgage (P&I)", value: "$1,647/mo", color: C.text },
+        { label: "Property Taxes",  value: "$420/mo",   color: C.text },
+        { label: "Insurance",       value: "$98/mo",    color: C.text },
+        { label: "Net Cash Flow",   value: "+$385/mo",  color: C.green },
+      ].map(row => (
+        <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#fff", borderRadius: 8, border: `1px solid ${C.rule}` }}>
+          <span style={{ fontSize: 11, color: C.muted }}>{row.label}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: row.color, fontVariantNumeric: "tabular-nums" }}>{row.value}</span>
         </div>
-        <div style={{
-          textAlign: "right",
-          background: "#e8f5ef", border: `1px solid ${C.green}40`,
-          borderRadius: 14, padding: "10px 16px",
-        }}>
-          <p style={{ fontSize: 10, color: C.green, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2 }}>Net / Month</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: C.green, letterSpacing: "-0.045em", lineHeight: 1 }}>+$360</p>
-        </div>
-      </div>
+      ))}
+    </div>
+  );
+}
 
-      {/* Animated bar breakdown */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        {bars.map((b, i) => (
-          <div key={i}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-              <span style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>{b.label}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: b.color }}>{b.val}</span>
-            </div>
-            <div style={{ height: 8, borderRadius: 999, background: C.rule, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 999, background: b.color,
-                width: visible ? b.w + "%" : "0%",
-                transition: `width 1s cubic-bezier(.22,1,.36,1) ${i * 0.14}s`,
-              }} />
-            </div>
-          </div>
+function CardDealScore() {
+  const score = 74;
+  const circ = 2 * Math.PI * 30;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+      <svg width="80" height="80" viewBox="0 0 80 80">
+        <circle cx={40} cy={40} r={30} fill="none" stroke={C.rule} strokeWidth={7} />
+        <circle cx={40} cy={40} r={30} fill="none" stroke={C.green} strokeWidth={7}
+          strokeDasharray={`${(score/100)*circ} ${circ}`} strokeDashoffset={circ/4} strokeLinecap="round" />
+        <text x={40} y={44} textAnchor="middle" style={{ fontSize: 18, fontWeight: 900, fill: C.green }}>{score}</text>
+      </svg>
+      <div>
+        <p style={{ fontSize: 13, fontWeight: 800, color: C.green, marginBottom: 4 }}>Strong Deal</p>
+        {["Cash flow ✓", "Cap rate ✓", "DSCR healthy"].map(t => (
+          <p key={t} style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>{t}</p>
         ))}
-      </div>
-
-      {/* Cash flow pill at bottom */}
-      <div style={{
-        marginTop: 18, display: "flex", alignItems: "center", gap: 8,
-        opacity: visible ? 1 : 0, transition: "opacity 0.5s ease 0.7s",
-      }}>
-        <div style={{ flex: 1, height: 1, background: C.rule }} />
-        <span style={{
-          fontSize: 11, fontWeight: 700, color: C.green,
-          background: "#e8f5ef", borderRadius: 999, padding: "4px 14px",
-          border: `1px solid ${C.green}30`,
-        }}>
-          ✓ Positive cash flow
-        </span>
-        <div style={{ flex: 1, height: 1, background: C.rule }} />
       </div>
     </div>
   );
 }
 
-// ─── Card 2: Deal Score ───────────────────────────────────────────────────────
-function CardDealScore() {
-  const { ref, visible } = useInView();
-  const [score, setScore] = useState(0);
-
-  useEffect(() => {
-    if (!visible) return;
-    let n = 0;
-    const t = setInterval(() => {
-      n += 2; setScore(Math.min(n, 82));
-      if (n >= 82) clearInterval(t);
-    }, 16);
-    return () => clearInterval(t);
-  }, [visible]);
-
-  const radius = 52, circ = 2 * Math.PI * radius;
-  const filled = (score / 100) * circ;
-  const scoreColor = score >= 70 ? C.green : score >= 45 ? C.amber : C.red;
-  const label = score >= 70 ? "Great Deal" : score >= 45 ? "Average" : "Risky";
-
-  const reasons = [
-    { text: "Strong rent-to-price ratio", ok: true },
-    { text: "Solid projected cash flow",  ok: true },
-    { text: "Healthy DSCR of 1.32",       ok: true },
-    { text: "Moderate rehab estimate",    ok: true },
-  ];
-
+function CardCSV() {
   return (
-    <div ref={ref} style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-      {/* Gauge */}
-      <div style={{ flexShrink: 0, position: "relative", width: 120, height: 120 }}>
-        <svg width="120" height="120" style={{ transform: "rotate(-90deg)" }}>
-          <circle cx="60" cy="60" r={radius} fill="none" stroke={C.rule} strokeWidth="9" />
-          <circle cx="60" cy="60" r={radius} fill="none" stroke={scoreColor} strokeWidth="9"
-            strokeDasharray={`${filled} ${circ - filled}`}
-            strokeLinecap="round"
-            style={{ transition: "stroke-dasharray 0.05s linear, stroke 0.3s" }}
-          />
-        </svg>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 30, fontWeight: 900, color: scoreColor, letterSpacing: "-0.05em", lineHeight: 1 }}>{score}</span>
-          <span style={{ fontSize: 10, color: C.faint, letterSpacing: "0.06em" }}>/ 100</span>
-        </div>
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4, marginBottom: 8 }}>
+        {["Address","Price","Rent","Score"].map(h => (
+          <div key={h} style={{ fontSize: 8, fontWeight: 700, color: C.faint, letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "center" }}>{h}</div>
+        ))}
       </div>
-
-      {/* Verdict + reasons */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14,
-          background: score >= 70 ? "#e8f5ef" : "#fdf5e8",
-          border: `1px solid ${scoreColor}40`,
-          borderRadius: 8, padding: "5px 12px",
-          opacity: visible ? 1 : 0, transition: "opacity 0.4s ease 0.8s",
-        }}>
-          <span style={{ fontSize: 14 }}>{score >= 70 ? "🏆" : score >= 45 ? "📊" : "⚠️"}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: scoreColor }}>{label}</span>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {reasons.map((r, i) => (
-            <div key={i} style={{
-              display: "flex", alignItems: "center", gap: 8,
-              opacity: visible ? 1 : 0,
-              transform: visible ? "translateX(0)" : "translateX(-12px)",
-              transition: `opacity 0.4s ease ${0.6 + i * 0.1}s, transform 0.4s ease ${0.6 + i * 0.1}s`,
-            }}>
-              <span style={{
-                width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-                background: C.green + "18", display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <span style={{ fontSize: 9, color: C.green, fontWeight: 900 }}>✓</span>
-              </span>
-              <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{r.text}</span>
-            </div>
+      {[
+        ["8901 Maple Dr", "$320k", "$2,200", "78"],
+        ["14 River Rd",   "$415k", "$2,950", "82"],
+        ["3801 Oak Ave",  "$289k", "$1,850", "61"],
+      ].map((row, i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4, marginBottom: 4 }}>
+          {row.map((cell, j) => (
+            <div key={j} style={{ fontSize: 10, color: j === 3 ? C.green : C.text, fontWeight: j === 3 ? 700 : 400, textAlign: "center", background: "#fff", borderRadius: 5, padding: "3px 2px", border: `1px solid ${C.rule}` }}>{cell}</div>
           ))}
         </div>
-      </div>
+      ))}
     </div>
   );
 }
 
-// ─── Card 3: CSV Bulk Upload ──────────────────────────────────────────────────
-function CardCSV() {
-  const { ref, visible } = useInView();
-  const [count, setCount] = useState(0);
-  const [rowsShown, setRowsShown] = useState(0);
-
-  useEffect(() => {
-    if (!visible) return;
-    let n = 0;
-    const t = setInterval(() => { n++; setCount(Math.min(n, 24)); if (n >= 24) clearInterval(t); }, 55);
-    return () => clearInterval(t);
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const timers = [0, 350, 700, 1050].map((d, i) =>
-      setTimeout(() => setRowsShown(i + 1), d + 300)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [visible]);
-
-  const rows = [
-    { addr: "1824 Oak Ln, Austin TX",    score: 78, badge: "Strong",   col: C.green },
-    { addr: "3301 River Rd, Dallas TX",  score: 64, badge: "Average",  col: C.amber },
-    { addr: "920 Pine St, Houston TX",   score: 51, badge: "Average",  col: C.amber },
-    { addr: "47 Elm Ave, Fort Worth TX", score: 82, badge: "Strong",   col: C.green },
-  ];
-
-  const stats = [
-    { val: String(count), sub: "imported" },
-    { val: "6",           sub: "strong deals" },
-    { val: "7.4%",        sub: "avg cap rate" },
-  ];
-
-  return (
-    <div ref={ref}>
-      {/* Stats strip */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        {stats.map((s, i) => (
-          <div key={i} style={{
-            flex: 1, background: C.bg, borderRadius: 14, padding: "10px 8px", textAlign: "center",
-            border: `1px solid ${C.rule}`,
-            opacity: visible ? 1 : 0,
-            transform: visible ? "none" : "translateY(10px)",
-            transition: `opacity 0.45s ease ${i * 0.08}s, transform 0.45s ease ${i * 0.08}s`,
-          }}>
-            <p style={{ fontSize: 20, fontWeight: 900, color: C.text, letterSpacing: "-0.04em", lineHeight: 1, margin: 0 }}>{s.val}</p>
-            <p style={{ fontSize: 9, color: C.faint, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>{s.sub}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Animated rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {rows.map((r, i) => (
-          <div key={i} style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            background: C.bg, borderRadius: 12, padding: "9px 14px",
-            border: `1px solid ${C.rule}`,
-            opacity: rowsShown > i ? 1 : 0,
-            transform: rowsShown > i ? "translateX(0)" : "translateX(-20px)",
-            transition: "opacity 0.35s ease, transform 0.35s ease",
-          }}>
-            <span style={{ fontSize: 11, color: C.text, fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 12 }}>{r.addr}</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: "0.07em",
-                background: r.col + "18", color: r.col,
-                border: `1px solid ${r.col}40`,
-                borderRadius: 999, padding: "2px 8px",
-              }}>{r.badge}</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: r.col, minWidth: 24, textAlign: "right" }}>{r.score}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Card 4: Side-by-Side Comparison ─────────────────────────────────────────
 function CardCompare() {
-  const { ref, visible } = useInView();
-  const props = [
-    { name: "Property A", cashflow:  410, cap: 7.2, score: 81, color: C.green, best: true  },
-    { name: "Property B", cashflow:  180, cap: 5.4, score: 63, color: C.amber, best: false },
-    { name: "Property C", cashflow:  -90, cap: 3.1, score: 38, color: C.red,   best: false },
-  ];
-  const maxAbs = 600;
-
-  return (
-    <div ref={ref} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {props.map((p, i) => {
-        const pct = Math.max(5, ((p.cashflow + 150) / (maxAbs + 150)) * 100);
-        return (
-          <div key={i} style={{
-            background: p.best ? "#e8f5ef" : C.bg,
-            border: `1px solid ${p.best ? C.green + "50" : C.rule}`,
-            borderRadius: 14, padding: "12px 14px",
-            opacity: visible ? 1 : 0,
-            transform: visible ? "none" : "translateY(14px)",
-            transition: `opacity 0.5s ease ${i * 0.13}s, transform 0.5s ease ${i * 0.13}s`,
-            position: "relative",
-          }}>
-            {p.best && (
-              <span style={{
-                position: "absolute", top: -1, right: 12,
-                fontSize: 8, fontWeight: 800, letterSpacing: "0.1em",
-                background: C.green, color: "#fff",
-                padding: "2px 8px", borderRadius: "0 0 6px 6px",
-              }}>BEST</span>
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{p.name}</span>
-              <div style={{ display: "flex", gap: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: p.color }}>
-                  {p.cashflow >= 0 ? "+" : ""}${Math.abs(p.cashflow)}/mo
-                </span>
-                <span style={{ fontSize: 11, color: C.faint }}>{p.cap}% cap</span>
-              </div>
-            </div>
-            <div style={{ height: 7, borderRadius: 999, background: C.rule, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 999, background: p.color,
-                width: visible ? pct + "%" : "0%",
-                transition: `width 0.85s cubic-bezier(.22,1,.36,1) ${0.45 + i * 0.13}s`,
-              }} />
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Insight line */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-        background: "#f0f8f4", borderRadius: 12, border: `1px solid ${C.green}30`,
-        opacity: visible ? 1 : 0, transition: "opacity 0.5s ease 0.7s",
-      }}>
-        <span style={{ fontSize: 16 }}>💡</span>
-        <span style={{ fontSize: 11, color: "#2a6a46", fontWeight: 500, lineHeight: 1.4 }}>
-          Property A generates <strong>2.3×</strong> more cash flow than Property B.
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Card 5: Save & Organize ──────────────────────────────────────────────────
-function CardSave() {
-  const { ref, visible } = useInView();
-  const [activeIdx, setActiveIdx] = useState(-1);
-
-  useEffect(() => {
-    if (!visible) return;
-    const timers = [0, 1200, 2400].map((d, i) =>
-      setTimeout(() => setActiveIdx(i), d + 600)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [visible]);
-
   const deals = [
-    { addr: "8901 Maple Dr, Austin TX",     tag: "Offer-worthy",     tagBg: "#e8f5ef", tagColor: C.green,  score: 82, scoreColor: C.green },
-    { addr: "204 W 6th St, Dallas TX",      tag: "Reviewed",         tagBg: "#eef0ff", tagColor: C.blue,   score: 71, scoreColor: C.green },
-    { addr: "5520 Lakeview Blvd, Plano TX", tag: "Needs better rent",tagBg: "#fdf5e8", tagColor: C.amber,  score: 48, scoreColor: C.amber },
+    { addr: "8901 Maple", cf: "+$385", score: 74, color: C.green },
+    { addr: "14 River Rd", cf: "+$512", score: 82, color: C.blue },
   ];
-
   return (
-    <div ref={ref} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-      {deals.map((d, i) => {
-        const isActive = activeIdx === i;
-        return (
-          <div key={i} style={{
-            background: C.bg,
-            border: `1px solid ${isActive ? d.tagColor + "60" : C.rule}`,
-            borderRadius: 14,
-            padding: "12px 14px",
-            display: "flex", alignItems: "center", gap: 12,
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateX(0)" : "translateX(20px)",
-            transition: `opacity 0.45s ease ${0.1 + i * 0.12}s, transform 0.45s ease ${0.1 + i * 0.12}s, border-color 0.3s, box-shadow 0.3s`,
-            boxShadow: isActive ? `0 4px 20px ${d.tagColor}20` : "none",
-          }}>
-            {/* Score bubble */}
-            <div style={{
-              width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-              background: d.scoreColor + "18",
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            }}>
-              <span style={{ fontSize: 16, fontWeight: 900, color: d.scoreColor, lineHeight: 1, letterSpacing: "-0.04em" }}>{d.score}</span>
-              <span style={{ fontSize: 7, color: d.scoreColor, opacity: 0.7 }}>/ 100</span>
-            </div>
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, color: C.text, marginBottom: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.addr}</p>
-              <span style={{ fontSize: 10, background: d.tagBg, color: d.tagColor, border: `1px solid ${d.tagColor}30`, borderRadius: 999, padding: "2px 9px", fontWeight: 600 }}>
-                {d.tag}
-              </span>
-            </div>
-          </div>
-        );
-      })}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      {deals.map(d => (
+        <div key={d.addr} style={{ background: "#fff", border: `1px solid ${C.rule}`, borderRadius: 10, padding: "12px 12px 10px", textAlign: "center" }}>
+          <p style={{ fontSize: 10, color: C.muted, marginBottom: 6, fontWeight: 500 }}>{d.addr}</p>
+          <p style={{ fontSize: 22, fontWeight: 800, color: d.color, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{d.cf}</p>
+          <p style={{ fontSize: 10, color: C.faint, marginTop: 4 }}>Score: <strong style={{ color: d.color }}>{d.score}</strong></p>
+        </div>
+      ))}
     </div>
   );
 }
 
-// ─── Card 6: Paste Listing Link ───────────────────────────────────────────────
-function CardPasteLink() {
-  const { ref, visible } = useInView(0.2);
-  const [phase, setPhase] = useState<"idle"|"typing"|"analyzing"|"done">("idle");
-  const [typed, setTyped] = useState("");
-  const fullUrl = "zillow.com/homedetails/11230-Cotillion-Dallas-TX-75228";
-
-  useEffect(() => {
-    if (!visible || phase !== "idle") return;
-    const t = setTimeout(() => setPhase("typing"), 500);
-    return () => clearTimeout(t);
-  }, [visible, phase]);
-
-  useEffect(() => {
-    if (phase !== "typing") return;
-    let i = 0;
-    const t = setInterval(() => {
-      i++; setTyped(fullUrl.slice(0, i));
-      if (i >= fullUrl.length) { clearInterval(t); setTimeout(() => setPhase("analyzing"), 400); }
-    }, 24);
-    return () => clearInterval(t);
-  }, [phase]);
-
-  useEffect(() => {
-    if (phase !== "analyzing") return;
-    const t = setTimeout(() => setPhase("done"), 900);
-    return () => clearTimeout(t);
-  }, [phase]);
-
-  const fields = [
-    { icon: "📍", label: "Address", value: "11230 Cotillion Dr, Dallas TX 75228" },
-    { icon: "🏠", label: "Source",  value: "Zillow"  },
-    { icon: "⚡", label: "Status",  value: "Ready to analyze" },
-  ];
-
+function CardDashboard() {
   return (
-    <div ref={ref}>
-      {/* URL input */}
-      <div style={{
-        background: C.bg, borderRadius: 14, padding: "11px 14px", marginBottom: 14,
-        border: `2px solid ${phase === "done" ? C.green : phase === "analyzing" ? C.amber : C.rule}`,
-        display: "flex", alignItems: "center", gap: 10,
-        transition: "border-color 0.4s",
-        boxShadow: phase === "done" ? `0 0 0 4px ${C.green}15` : "none",
-      }}>
-        <span style={{ fontSize: 14, flexShrink: 0 }}>🔗</span>
-        <span style={{ fontSize: 11, fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: phase === "done" ? C.text : C.muted }}>
-          {typed || <span style={{ color: C.faint, fontStyle: "italic" }}>Paste a Zillow or Redfin link…</span>}
-          {phase === "typing" && <span style={{ display: "inline-block", width: 2, height: 12, background: C.text, marginLeft: 1, verticalAlign: "middle", animation: "dealistic-spin 0.8s step-start infinite" }} />}
-        </span>
-        {phase === "analyzing" && (
-          <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: C.amber }}>
-            <span style={{ width: 10, height: 10, border: `1.5px solid ${C.amber}`, borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "dealistic-spin 0.6s linear infinite" }} />
-            Analyzing
-          </span>
-        )}
-        {phase === "done" && (
-          <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", background: C.green, color: "#fff", padding: "3px 9px", borderRadius: 999 }}>FOUND</span>
-        )}
-      </div>
-
-      {/* Result fields */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {fields.map((f, i) => (
-          <div key={i} style={{
-            display: "flex", alignItems: "center", gap: 10,
-            background: C.bg, borderRadius: 12, padding: "10px 13px",
-            border: `1px solid ${C.rule}`,
-            opacity: phase === "done" ? 1 : 0,
-            transform: phase === "done" ? "none" : "translateY(10px)",
-            transition: `opacity 0.4s ease ${i * 0.12}s, transform 0.4s ease ${i * 0.12}s`,
-          }}>
-            <span style={{ fontSize: 14, flexShrink: 0 }}>{f.icon}</span>
-            <span style={{ fontSize: 9, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", width: 44, flexShrink: 0 }}>{f.label}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: f.label === "Status" ? C.green : C.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.value}</span>
-          </div>
-        ))}
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {[
+        { addr: "8901 Maple Dr", score: 74, cf: "+$385/mo", tag: "Watching" },
+        { addr: "14 River Rd",   score: 82, cf: "+$512/mo", tag: "Saved" },
+        { addr: "3801 Oak Ave",  score: 61, cf: "+$120/mo", tag: "Saved" },
+      ].map(d => (
+        <div key={d.addr} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 8, border: `1px solid ${C.rule}`, padding: "8px 10px" }}>
+          <span style={{ width: 28, height: 28, borderRadius: 8, background: C.bg2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: C.muted, flexShrink: 0 }}>{d.score}</span>
+          <span style={{ fontSize: 11, color: C.text, flex: 1, fontWeight: 500 }}>{d.addr}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{d.cf}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-// ─── Showcase Section wrapper ─────────────────────────────────────────────────
 function ShowcaseSection() {
   return (
     <section style={{ background: "rgba(255,255,255,0.5)", borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}`, backdropFilter: "blur(8px)" }}>
@@ -3116,80 +2366,42 @@ function ShowcaseSection() {
         }
       `}</style>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(48px,7vw,88px) clamp(16px,4vw,40px)" }}>
-
-        {/* Section header */}
         <FadeIn>
           <div style={{ marginBottom: 60 }}>
-            <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 14 }}>
-              What you get
-            </p>
-            <h2 style={{
-              fontSize: "clamp(32px,4vw,52px)", fontWeight: 800,
-              letterSpacing: "-0.04em", color: C.text,
-              lineHeight: 1.08, margin: "0 0 18px", maxWidth: 620,
-            }}>
+            <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 14 }}>What you get</p>
+            <h2 style={{ fontSize: "clamp(32px,4vw,52px)", fontWeight: 800, letterSpacing: "-0.04em", color: C.text, lineHeight: 1.08, margin: "0 0 18px", maxWidth: 620 }}>
               Every tool to analyze,<br />compare, and decide.
             </h2>
             <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.7, maxWidth: 440, margin: 0 }}>
-              From a single URL to a full portfolio — Dealistic gives you the numbers that matter.
+              Manual entry, CSV upload, or bulk analysis — Dealistic gives you the numbers that matter.
             </p>
           </div>
         </FadeIn>
 
-        {/* 2-column grid — collapses to 1 col on mobile */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20 }}>
-          <ShowCard
-            title="Full Financial Breakdown"
-            tag="Cash Flow" tagColor={C.green}
-            delay={0}
-            desc="See mortgage, taxes, insurance, and net cash flow side by side — before you ever make an offer."
-          >
+          <ShowCard title="Full Financial Breakdown" tag="Cash Flow" tagColor={C.green} delay={0}
+            desc="See mortgage, taxes, insurance, and net cash flow side by side — before you ever make an offer.">
             <CardFinancial />
           </ShowCard>
 
-          <ShowCard
-            title="Deal Score — 1 to 100"
-            tag="AI Score" tagColor={C.blue}
-            delay={0.08}
-            desc="Every deal gets a score. See exactly why it's great, average, or risky — in plain language."
-          >
+          <ShowCard title="Deal Score — 1 to 100" tag="AI Score" tagColor={C.blue} delay={0.08}
+            desc="Every deal gets a score. See exactly why it's great, average, or risky — in plain language.">
             <CardDealScore />
           </ShowCard>
 
-          <ShowCard
-            title="CSV Bulk Upload"
-            tag="Batch Import" tagColor={C.amber}
-            delay={0.14}
-            desc="Import dozens of deals at once. Strong deals are flagged automatically so you know where to focus."
-          >
+          <ShowCard title="CSV Bulk Upload" tag="Batch Import" tagColor={C.amber} delay={0.14}
+            desc="Import dozens of deals at once. Strong deals are flagged automatically so you know where to focus.">
             <CardCSV />
           </ShowCard>
 
-          <ShowCard
-            title="Side-by-Side Comparison"
-            tag="Compare" tagColor="#7c3aed"
-            delay={0.20}
-            desc="Stack properties head-to-head on every metric. The winner is always obvious."
-          >
+          <ShowCard title="Side-by-Side Comparison" tag="Compare" tagColor="#7c3aed" delay={0.20}
+            desc="Stack properties head-to-head on every metric. The winner is always obvious.">
             <CardCompare />
           </ShowCard>
 
-          <ShowCard
-            title="Save & Organize"
-            tag="Dashboard" tagColor={C.green}
-            delay={0.26}
-            desc="Tag deals, track your pipeline, and revisit your best opportunities from one clean dashboard."
-          >
-            <CardSave />
-          </ShowCard>
-
-          <ShowCard
-            title="Paste Any Listing Link"
-            tag="Auto-Import" tagColor={C.amber}
-            delay={0.32}
-            desc="Drop in a Zillow or Redfin URL. We extract the address and get your analysis started instantly."
-          >
-            <CardPasteLink />
+          <ShowCard title="Save & Organize" tag="Dashboard" tagColor={C.green} delay={0.26}
+            desc="Tag deals, track your pipeline, and revisit your best opportunities from one clean dashboard.">
+            <CardDashboard />
           </ShowCard>
         </div>
       </div>
@@ -3461,7 +2673,7 @@ function StepVisual01() {
   // phase: 0=idle 1=typing-url 2=address-revealed 3=fields-filling
   const [phase, setPhase] = useState(0);
   const [typed, setTyped] = useState("");
-  const fullUrl = "zillow.com/homedetails/8901-Maple-Dr-Austin-TX";
+  const fullUrl = "8901-Maple-Dr-Austin-TX-78701";
 
   // Drive the phase sequence once visible
   useEffect(() => {
@@ -3507,7 +2719,7 @@ function StepVisual01() {
         <span style={{ fontSize: 13 }}>🔗</span>
         <span style={{ fontSize: 10, fontFamily: "monospace", flex: 1, color: phase >= 2 ? C.text : C.muted,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {typed || <span style={{ color: C.faint, fontStyle: "italic" }}>Paste a Zillow or Redfin link…</span>}
+          {typed || <span style={{ color: C.faint, fontStyle: "italic" }}>Enter an address or property details…</span>}
           {phase === 1 && (
             <span style={{ display: "inline-block", width: 2, height: 11, background: C.text,
               verticalAlign: "middle", marginLeft: 1, animation: "blink-cur 0.9s step-start infinite" }} />
@@ -4083,7 +3295,7 @@ function LandingPage({ onAnalyze, onLearn, onNavigate }: { onAnalyze: () => void
         </FadeIn>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {([
-            { n: "01", color: C.blue,        icon: "🔗", title: "Paste a link or enter details", desc: "Drop in a Zillow URL, upload a CSV, or fill in a few fields. Smart defaults fill in what you skip." },
+            { n: "01", color: C.blue,        icon: "✏️", title: "Enter details or upload a CSV",  desc: "Fill in a few property fields manually, or upload a CSV to analyze multiple deals at once. Smart defaults fill in what you skip." },
             { n: "02", color: C.accentGreen,  icon: "⚡", title: "Get 12+ metrics instantly",     desc: "Cash flow, cap rate, DSCR, CoC — calculated in real time with a full monthly breakdown." },
             { n: "03", color: "#ea580c",      icon: "🎯", title: "Read your Dealistic Score",     desc: "Every deal scores 1–100. You see exactly what's working, what to watch, and why." },
           ] as { n: string; color: string; icon: string; title: string; desc: string }[]).map((step, i) => (
@@ -4470,7 +3682,8 @@ function parseCsvText(text: string): CsvParsed | { error: string } {
   const { mapping, confidence } = autoMapHeaders(headers, rows);
 
   const warnings: string[] = [];
-  if (!Object.values(mapping).includes("purchase_price")) {
+  // Only require purchase_price mapping for actual property/deal files
+  if (!dataset.isMarketDataset && !Object.values(mapping).includes("purchase_price")) {
     warnings.push("Could not auto-detect a Purchase Price column — please map it below.");
   }
   return { headers, usableHeaders, rows, mapping, confidence, colTypes, dataset, warnings };
@@ -4763,9 +3976,28 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel, 
     );
   }
 
-  // ── Normal mapping UI ──────────────────────────────────────────────────────
+  // ── Normal mapping UI (property/deal dataset) ──────────────────────────────
   return (
     <div>
+      {/* Property dataset badge */}
+      <div style={{
+        background: "linear-gradient(135deg,#eff6ff,#f0fdf4)",
+        border: "1px solid #bfdbfe", borderRadius: 14,
+        padding: "14px 18px", marginBottom: 20,
+        display: "flex", alignItems: "flex-start", gap: 12,
+      }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg,#2563eb,#059669)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: 15 }}>🏠</span>
+        </div>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 3, letterSpacing: "-0.01em" }}>
+            Property dataset detected.
+          </p>
+          <p style={{ fontSize: 12, color: "#475569", margin: 0, lineHeight: 1.55 }}>
+            Map <strong style={{ color: "#0f172a" }}>Purchase Price</strong> to continue. Other fields use smart defaults if left unmapped.
+          </p>
+        </div>
+      </div>
       {/* Noise columns notice */}
       {ignoredCount > 0 && (
         <p style={{ fontSize: 11, color: C.faint, marginBottom: 18, fontStyle: "italic" }}>
@@ -4780,7 +4012,7 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel, 
             Step 1 — Required Fields
           </p>
           <span style={{ fontSize: 10, color: hasPriceMapping ? C.green : C.red, fontWeight: 600 }}>
-            {hasPriceMapping ? "✓ Purchase Price mapped" : "Purchase Price required"}
+            {hasPriceMapping ? "✓ Purchase Price mapped" : "Purchase Price not yet mapped"}
           </span>
         </div>
         <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.55 }}>
@@ -4848,7 +4080,7 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel, 
         </button>
       </div>
       {!hasPriceMapping && (
-        <p style={{ fontSize: 11, color: C.red, marginTop: 10 }}>Map at least one column to Purchase Price to continue.</p>
+        <p style={{ fontSize: 11, color: "#d97706", marginTop: 10 }}>Assign a column to Purchase Price above — it's required to analyze deals.</p>
       )}
     </div>
   );
@@ -5094,12 +4326,10 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
   const [autoTax, setAutoTax] = useState(true); // true = use state estimate, false = manual
   const [marketData, setMarketData] = useState<MarketRow[]>([]);
   const [showComps, setShowComps] = useState(false);
-  const [showRentometer, setShowRentometer] = useState(false);
   const [csvError, setCsvError] = useState("");
   const [csvParsed, setCsvParsed] = useState<CsvParsed | null>(null);
   const [csvMapping, setCsvMapping] = useState<Record<string,CsvField>>({});
   const [csvStep, setCsvStep] = useState<"upload"|"map"|"preview">("upload");
-  const [urlAutofillNotice, setUrlAutofillNotice] = useState<string | null>(null);
   const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -5178,47 +4408,6 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
     setSaved(true);
   }
 
-  function handleUrlAutofill(data: ParsedProperty) {
-    const updated: Record<string, string> = { ...form };
-    if (data.address)  updated.address = data.address;
-    if (data.price)    updated.price   = String(data.price);
-    if (data.rent)     updated.rent    = String(data.rent);
-    if (data.bedrooms) updated.beds    = String(data.bedrooms);
-    if (data.bathrooms) updated.baths  = String(data.bathrooms);
-    if (data.rent && appMode !== "investor") setAppMode("investor");
-    setForm(updated);
-    setResult(null);
-    setSaved(false);
-
-    // Compute which important fields are still empty → highlight them
-    const missing = new Set<string>();
-    if (!data.price)     missing.add("price");
-    if (!data.rent)      missing.add("rent");
-    if (!data.bedrooms)  missing.add("beds");
-    if (!data.bathrooms) missing.add("baths");
-    if (!data.sqft)      missing.add("sqft");
-    setHighlightFields(missing);
-    // Clear highlights after 12s so they don't linger forever
-    setTimeout(() => setHighlightFields(new Set()), 12000);
-
-    const filled  = [data.address && "address", data.price && "price", data.rent && "rent"].filter(Boolean) as string[];
-    setUrlAutofillNotice(
-      filled.length > 0
-        ? `Pre-filled: ${filled.join(", ")}. Complete the highlighted fields below.`
-        : "Address found from URL. Please fill in the highlighted fields to continue."
-    );
-    setTimeout(() => setUrlAutofillNotice(null), 10000);
-
-    // Focus price field if missing, otherwise scroll to form
-    setTimeout(() => {
-      if (!data.price && priceInputRef.current) {
-        priceInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-        priceInputRef.current.focus();
-      } else {
-        window.scrollTo({ top: 220, behavior: "smooth" });
-      }
-    }, 200);
-  }
 
   function handleRentEstimate(val: string) {
     setField("rent")(val);
@@ -5398,30 +4587,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
         </div>
       </div>
 
-      {/* URL autofill bar */}
-      <PropertyUrlBar onAutofill={handleUrlAutofill} />
-
-      {/* Autofill notice with highlighted field checklist */}
-      {urlAutofillNotice && (
-        <div style={{ padding: "10px 32px", background: "#f5f7ff", borderBottom: "1px solid #c8d0f0", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 9, background: "#4a6cf7", color: "#fff", padding: "2px 7px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 3, flexShrink: 0 }}>
-            Imported
-          </span>
-          <p style={{ fontSize: 12, color: "#1a2050", flex: 1 }}>{urlAutofillNotice}</p>
-          {highlightFields.size > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-              <span style={{ fontSize: 10, color: "#6070a0" }}>Complete:</span>
-              {[...highlightFields].map(f => (
-                <span key={f} style={{ fontSize: 10, background: "#dde2ff", color: "#4a6cf7", borderRadius: 4, padding: "2px 7px", fontWeight: 600 }}>
-                  {f === "price" ? "Price" : f === "rent" ? "Rent" : f === "beds" ? "Beds" : f === "baths" ? "Baths" : "Sq Ft"}
-                </span>
-              ))}
-            </div>
-          )}
-          <button onClick={() => { setUrlAutofillNotice(null); setHighlightFields(new Set()); }} style={{ fontSize: 14, color: "#8090c0", background: "none", border: "none", cursor: "pointer", padding: "0 4px", flexShrink: 0 }}>×</button>
-        </div>
-      )}
-
+      
       <div style={{ maxWidth: 1260, margin: "0 auto", padding: "clamp(20px,3vw,40px) clamp(16px,3vw,40px)" }}>
 
         {/* ── Manual Mode ── */}
@@ -5527,12 +4693,8 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                           <button onClick={() => setShowComps(v => !v)} className="az-btn-ghost" style={{ fontSize: 10 }}>
                             {showComps ? "Hide Comps" : "Rental Comps"}
                           </button>
-                          <button onClick={() => setShowRentometer(v => !v)} className="az-btn-ghost" style={{ fontSize: 10 }}>
-                            {showRentometer ? "Hide" : "Rentometer"}
-                          </button>
-                        </div>
+                          </div>
                         {showComps && <RentalCompsSection onUseAverage={handleUseAverage} />}
-                        {showRentometer && <RentometerSection address={form.address} />}
                       </div>
                     </div>
                   )}
@@ -6714,7 +5876,7 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
           <span style={eyebrow("A · Inputs", "#2563eb")}>A · Inputs</span>
           <h2 style={sectionH2}>What Dealistic needs from you.</h2>
           <p style={{ ...prose, maxWidth: 620, marginBottom: 32 }}>
-            Dealistic works with whatever you have. You can paste a Zillow or Redfin listing link to auto-fill the address, enter everything manually, or upload a CSV to analyze multiple properties at once. The only truly required field is a purchase price — everything else either auto-fills or falls back to a smart default based on market norms.
+            Dealistic works with whatever you have. Enter property details manually or upload a CSV to analyze multiple deals at once. The only truly required field is a purchase price — everything else falls back to a smart default based on market norms.
           </p>
         </FadeIn>
 
@@ -6835,8 +5997,8 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
                     </svg>
                   ),
                   color: "#2563eb",
-                  title: "Paste a listing URL",
-                  desc: "Drop in a Zillow or Redfin link — address and price auto-fill instantly.",
+                  title: "Enter numbers manually",
+                  desc: "Fill in purchase price, rent, and expenses. Smart defaults handle anything you leave blank.",
                 },
                 {
                   icon: (
@@ -7187,7 +6349,7 @@ function PrivacyPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
         <p>Dealistic uses a small number of third-party services:</p>
         <ul>
           <li><strong>Rentometer</strong> — opening Rentometer opens their site directly in your browser. We don't share your data with them.</li>
-          <li><strong>Zillow / Redfin</strong> — pasting a listing URL fetches publicly available listing data. No personal data is sent.</li>
+          
           <li><strong>Analytics</strong> — lightweight, privacy-respecting analytics for general usage patterns only.</li>
         </ul>
         <p>We do not embed advertising networks, social media trackers, or data brokers.</p>
