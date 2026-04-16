@@ -729,43 +729,186 @@ function BuyerResults({ result, onSwitchToInvestor }: { result: AnalysisResult; 
 }
 
 // ─── InvestorDashboard ────────────────────────────────────────────────────────
-function BarChart({ income, expenses }: { income: number; expenses: number }) {
-  const max = Math.max(income, expenses, 1);
-  const incomeH = Math.round((income / max) * 140);
-  const expensesH = Math.round((expenses / max) * 140);
+function BarChart({ income, expenses, d: dealInput }: {
+  income: number;
+  expenses: number;
+  d?: DealInput;
+}) {
   const cashflow = income - expenses;
   const positive = cashflow >= 0;
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold: 0.15 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // ── Bar chart values ──────────────────────────────────────────────────────
+  const peak = Math.max(income, expenses, 1);
+  const BAR_MAX_H = 120;
+  const bars = [
+    { label: "Income",    value: income,   color: "#059669", pct: income / peak,   signed: false },
+    { label: "Expenses",  value: expenses, color: "#f87171", pct: expenses / peak, signed: false },
+    { label: "Net Flow",  value: Math.abs(cashflow), color: positive ? "#059669" : "#dc2626",
+      pct: Math.max(0.03, Math.abs(cashflow) / peak), signed: true },
+  ];
+
+  // ── Donut (expense breakdown) — only when we have dealInput ──────────────
+  const slices: { label: string; value: number; color: string }[] = [];
+  if (dealInput) {
+    const mtg = expenses - (dealInput.taxes + dealInput.insurance + dealInput.hoa
+      + dealInput.repairs + dealInput.mgmt + dealInput.other);
+    const items: [string, number, string][] = [
+      ["Mortgage",   Math.max(0, mtg),          "#3b82f6"],
+      ["Taxes",      dealInput.taxes,            "#8b5cf6"],
+      ["Insurance",  dealInput.insurance,        "#f59e0b"],
+      ["HOA",        dealInput.hoa,              "#06b6d4"],
+      ["Repairs",    dealInput.repairs,          "#10b981"],
+      ["Management", dealInput.mgmt,             "#f97316"],
+      ["Other",      dealInput.other,            "#94a3b8"],
+    ];
+    items.forEach(([label, value, color]) => {
+      if (value > 0) slices.push({ label, value, color });
+    });
+  }
+  const donutTotal = slices.reduce((s, x) => s + x.value, 0);
+
+  // Build SVG arc paths for donut
+  const R = 52, r = 32, CX = 64, CY = 64;
+  let cursor = -Math.PI / 2; // start at 12 o'clock
+  const donutPaths = slices.map(sl => {
+    const angle = (sl.value / donutTotal) * 2 * Math.PI;
+    const x1 = CX + R * Math.cos(cursor);
+    const y1 = CY + R * Math.sin(cursor);
+    cursor += angle;
+    const x2 = CX + R * Math.cos(cursor);
+    const y2 = CY + R * Math.sin(cursor);
+    const mx1 = CX + r * Math.cos(cursor);
+    const my1 = CY + r * Math.sin(cursor);
+    cursor -= angle;
+    const mx2 = CX + r * Math.cos(cursor);
+    const my2 = CY + r * Math.sin(cursor);
+    const large = angle > Math.PI ? 1 : 0;
+    const path = `M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} L ${mx1} ${my1} A ${r} ${r} 0 ${large} 0 ${mx2} ${my2} Z`;
+    cursor += angle;
+    return { ...sl, path };
+  });
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 24, height: 160, paddingBottom: 0 }}>
-        {/* Income bar */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 500, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmt(income)}</span>
-          <div style={{ width: "100%", height: incomeH, background: C.green, opacity: 0.85, transition: "height 0.5s ease" }} />
+    <div ref={ref}>
+      {/* ── Bar chart ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: slices.length > 0 ? "1fr 1fr" : "1fr",
+        gap: 20, alignItems: "end",
+      }}>
+        <div>
+          {/* Bars */}
+          <div style={{
+            display: "flex", alignItems: "flex-end", gap: 12,
+            height: BAR_MAX_H + 28, paddingBottom: 0,
+          }}>
+            {bars.map((bar, i) => {
+              const h = Math.round(bar.pct * BAR_MAX_H);
+              const delay = i * 0.08;
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%", justifyContent: "flex-end" }}>
+                  {/* Value label */}
+                  <span style={{
+                    fontSize: 11, fontWeight: 700,
+                    color: bar.color, fontVariantNumeric: "tabular-nums",
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 0.4s ease ${delay + 0.4}s`,
+                    letterSpacing: "-0.01em",
+                  }}>
+                    {bar.signed ? fmtSigned(cashflow) : fmt(bar.value)}
+                  </span>
+                  {/* Bar */}
+                  <div style={{
+                    width: "100%", borderRadius: "6px 6px 0 0",
+                    background: bar.color,
+                    opacity: i === 1 ? 0.75 : i === 2 && !positive ? 0.85 : 0.9,
+                    height: visible ? h : 0,
+                    transition: `height 0.55s cubic-bezier(.22,1,.36,1) ${delay}s`,
+                    minHeight: visible ? 4 : 0,
+                    boxShadow: `0 -2px 8px ${bar.color}40`,
+                  }} />
+                </div>
+              );
+            })}
+          </div>
+          {/* Baseline + labels */}
+          <div style={{ borderTop: "1.5px solid #e2e8f0", paddingTop: 8, display: "flex", gap: 12 }}>
+            {bars.map((bar, i) => (
+              <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>
+                  {bar.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-        {/* Expenses bar */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 500, color: C.red, fontVariantNumeric: "tabular-nums" }}>{fmt(expenses)}</span>
-          <div style={{ width: "100%", height: expensesH, background: C.red, opacity: 0.75, transition: "height 0.5s ease" }} />
-        </div>
-        {/* Cash flow bar */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 500, color: positive ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>{fmtSigned(cashflow)}</span>
-          <div style={{ width: "100%", height: Math.max(4, Math.round((Math.abs(cashflow) / max) * 140)), background: positive ? C.green : C.red, opacity: 0.6, transition: "height 0.5s ease" }} />
-        </div>
-      </div>
-      {/* X-axis labels */}
-      <div style={{ display: "flex", gap: 24, marginTop: 8, borderTop: `1px solid ${C.rule}`, paddingTop: 8 }}>
-        <div style={{ flex: 1, textAlign: "center" }}>
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Income</p>
-        </div>
-        <div style={{ flex: 1, textAlign: "center" }}>
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Expenses</p>
-        </div>
-        <div style={{ flex: 1, textAlign: "center" }}>
-          <p style={{ fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Cash Flow</p>
-        </div>
+
+        {/* ── Donut chart ── */}
+        {slices.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, margin: 0 }}>
+              Expense Breakdown
+            </p>
+            <svg
+              width="128" height="128" viewBox="0 0 128 128"
+              style={{ overflow: "visible", flexShrink: 0 }}
+            >
+              <defs>
+                <filter id="donut-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.08" />
+                </filter>
+              </defs>
+              <g filter="url(#donut-shadow)">
+                {donutPaths.map((sl, i) => {
+                  const dashLen = (sl.value / donutTotal) * 2 * Math.PI * R;
+                  return (
+                    <path
+                      key={i}
+                      d={sl.path}
+                      fill={sl.color}
+                      opacity={visible ? 0.88 : 0}
+                      style={{ transition: `opacity 0.5s ease ${i * 0.06 + 0.2}s` }}
+                    />
+                  );
+                })}
+              </g>
+              {/* Center label */}
+              <text x={CX} y={CY - 5} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }}>
+                {fmt(expenses)}
+              </text>
+              <text x={CX} y={CY + 9} textAnchor="middle" style={{ fontSize: 8, fill: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                /mo
+              </text>
+            </svg>
+            {/* Legend */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
+              {slices.map((sl, i) => (
+                <div key={i} style={{
+                  display: "flex", alignItems: "center", gap: 7,
+                  opacity: visible ? 1 : 0,
+                  transition: `opacity 0.4s ease ${i * 0.05 + 0.35}s`,
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: sl.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: "#64748b", flex: 1, fontWeight: 500 }}>{sl.label}</span>
+                  <span style={{ fontSize: 10, color: "#0f172a", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(sl.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1302,7 +1445,7 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
       {/* ══ 6. INCOME vs EXPENSES ══════════════════════════════════════════════ */}
       <div style={{ marginBottom: 32 }}>
         <div style={{ ...sh }}><span>Income vs. Expenses</span>{rule}</div>
-        <BarChart income={r.effectiveRent} expenses={r.totalMonthly} />
+        <BarChart income={r.effectiveRent} expenses={r.totalMonthly} d={d} />
       </div>
 
       {/* ══ 7. MONTHLY BREAKDOWN ═══════════════════════════════════════════════ */}
@@ -6857,30 +7000,52 @@ export default function Dealistic() {
         }
       `}</style>
 
-      {/* ── Global top nav bar — in-flow, never overlaps content ── */}
+      {/* ── Global top nav bar ── */}
       {!authPage && (
         <div style={{
           position: "sticky", top: 0, zIndex: 200,
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 24px", height: 52,
-          background: "rgba(255,255,255,0.82)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: `1px solid ${C.rule}`,
+          padding: "0 20px", height: 52,
+          background: "rgba(255,255,255,0.88)",
+          backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+          borderBottom: `1px solid ${C.rule}`,
         }}>
-          {/* Left: hamburger menu button */}
-          <button
-            onClick={() => setMenuOpen(o => !o)}
-            title="Open menu"
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            style={{
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 4.5, width: 36, height: 36, border: "none", borderRadius: 7,
-              background: "transparent", cursor: "pointer", transition: "background 0.15s", flexShrink: 0,
-            }}
-          >
-            {[0, 1, 2].map(i => (
-              <span key={i} style={{ display: "block", width: 17, height: 1.5, background: C.text, borderRadius: 1 }} />
-            ))}
-          </button>
+          {/* Left: brand + hamburger */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              title={menuOpen ? "Close menu" : "Open menu"}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", gap: 4.5,
+                width: 32, height: 32, border: "none", borderRadius: 7,
+                background: menuOpen ? C.bg2 : "transparent",
+                cursor: "pointer", transition: "background 0.15s", flexShrink: 0,
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
+              onMouseLeave={e => { if (!menuOpen) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              {menuOpen ? (
+                /* × close icon */
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={C.text} strokeWidth="1.8" strokeLinecap="round">
+                  <line x1="1" y1="1" x2="13" y2="13" /><line x1="13" y1="1" x2="1" y2="13" />
+                </svg>
+              ) : (
+                /* ≡ hamburger */
+                <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke={C.text} strokeWidth="1.5" strokeLinecap="round">
+                  <line x1="0" y1="1" x2="16" y2="1" /><line x1="0" y1="6" x2="16" y2="6" /><line x1="0" y1="11" x2="16" y2="11" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => navigate("landing")}
+              style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: C.text, letterSpacing: "-0.025em", padding: 0, transition: "color 0.15s" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.blue; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.text; }}
+            >
+              Dealistic
+            </button>
+          </div>
 
           {/* Right: auth */}
           {user ? (
@@ -6894,22 +7059,22 @@ export default function Dealistic() {
                 cursor: "pointer", fontFamily: "inherit", transition: "background 0.12s",
               }}
             >
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.pill, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: C.pillTxt, textTransform: "uppercase" }}>{user.name.charAt(0)}</span>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#1e3a5f", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#e0f2fe", textTransform: "uppercase" }}>{user.name.charAt(0)}</span>
               </div>
-              <span style={{ fontSize: 11, color: C.text, fontWeight: 500, letterSpacing: "0.03em" }}>Account</span>
+              <span style={{ fontSize: 12, color: C.text, fontWeight: 500 }}>Account</span>
             </button>
           ) : (
             <button
               onClick={() => openAuth("login")}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.text; (e.currentTarget as HTMLElement).style.color = C.bg; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.text; }}
               style={{
                 padding: "6px 14px", background: "transparent", border: `1px solid ${C.rule}`,
-                borderRadius: 999, fontSize: 11, fontWeight: 500,
+                borderRadius: 999, fontSize: 12, fontWeight: 500,
                 cursor: "pointer", fontFamily: "inherit", color: C.text,
                 transition: "all 0.15s", whiteSpace: "nowrap",
               }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.text; (e.currentTarget as HTMLElement).style.color = C.bg; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.text; }}
             >
               Log In
             </button>
@@ -6917,50 +7082,187 @@ export default function Dealistic() {
         </div>
       )}
 
-      {/* Fullscreen menu overlay */}
+      {/* ── Slide-in sidebar ── */}
       {menuOpen && !authPage && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: `linear-gradient(150deg, ${C.pill} 0%, #0f2952 50%, #0c4a3a 100%)`, display: "flex", flexDirection: "column", padding: "16px 24px" }}>
-          {/* Overlay top bar — close button matches global nav height */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 52, marginBottom: 48 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.pillTxt, letterSpacing: "-0.01em" }}>Dealistic</span>
-            <button
-              onClick={() => setMenuOpen(false)}
-              title="Close menu"
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-              style={{ display: "flex", flexDirection: "column", gap: 4.5, alignItems: "center", justifyContent: "center", width: 36, height: 36, background: "transparent", border: "none", borderRadius: 7, cursor: "pointer", transition: "background 0.15s", position: "relative" }}
-            >
-              <span style={{ position: "absolute", width: 17, height: 1.5, background: C.pillTxt, borderRadius: 1, transform: "rotate(45deg)" }} />
-              <span style={{ position: "absolute", width: 17, height: 1.5, background: C.pillTxt, borderRadius: 1, transform: "rotate(-45deg)" }} />
-            </button>
-          </div>
-          <nav style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"], ["learn", "Learn"], ["privacy", "Privacy"], ["contact", "Contact"]] as [Page, string][]).map(([p, label]) => (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setMenuOpen(false)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 299,
+              background: "rgba(15,23,42,0.32)",
+              backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)",
+              animation: "sidebarFadeIn 0.2s ease",
+            }}
+          />
+          {/* Panel */}
+          <div style={{
+            position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 300,
+            width: 240, display: "flex", flexDirection: "column",
+            background: "#ffffff",
+            borderRight: "1px solid #e2e8f0",
+            boxShadow: "4px 0 24px rgba(15,23,42,0.08)",
+            animation: "sidebarSlideIn 0.22s cubic-bezier(.22,1,.36,1)",
+          }}>
+            <style>{`
+              @keyframes sidebarFadeIn  { from { opacity: 0 } to { opacity: 1 } }
+              @keyframes sidebarSlideIn { from { transform: translateX(-100%) } to { transform: translateX(0) } }
+            `}</style>
+
+            {/* Panel header — matches top nav height exactly */}
+            <div style={{
+              height: 52, display: "flex", alignItems: "center",
+              justifyContent: "space-between", padding: "0 16px",
+              borderBottom: "1px solid #f1f5f9", flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em" }}>Dealistic</span>
               <button
-                key={p}
-                onClick={() => navigate(p)}
-                style={{ background: "none", border: "none", textAlign: "left", fontSize: "clamp(44px,7vw,84px)", fontWeight: 500, letterSpacing: "-0.04em", color: page === p ? C.blue : C.pillTxt, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.1, padding: "2px 0", transition: "color 0.12s" }}
-                onMouseEnter={e => { if (page !== p) (e.currentTarget as HTMLElement).style.color = "#8a8680"; }}
-                onMouseLeave={e => { if (page !== p) (e.currentTarget as HTMLElement).style.color = C.pillTxt; }}
+                onClick={() => setMenuOpen(false)}
+                style={{
+                  width: 28, height: 28, display: "flex", alignItems: "center",
+                  justifyContent: "center", border: "none", borderRadius: 6,
+                  background: "transparent", cursor: "pointer", transition: "background 0.15s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f1f5f9"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
-                {label}
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#64748b" strokeWidth="1.8" strokeLinecap="round">
+                  <line x1="1" y1="1" x2="11" y2="11" /><line x1="11" y1="1" x2="1" y2="11" />
+                </svg>
               </button>
-            ))}
-            {/* Auth link in menu */}
-            <button
-              onClick={() => openAuth(user ? "account" : "login")}
-              style={{ background: "none", border: "none", textAlign: "left", fontSize: "clamp(44px,7vw,84px)", fontWeight: 500, letterSpacing: "-0.04em", color: C.pillTxt, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.1, padding: "2px 0", transition: "color 0.12s" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#8a8680"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.pillTxt; }}
-            >
-              {user ? "Account" : "Log In"}
-            </button>
-          </nav>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 40, borderTop: "1px solid #2e2c29" }}>
-            <span style={{ fontSize: 11, color: "#4a4744", letterSpacing: "0.1em", textTransform: "uppercase" }}>Dealistic — 2026</span>
-            {user && <span style={{ fontSize: 11, color: "#4a4744", letterSpacing: "0.1em" }}>Signed in as {user.email}</span>}
+            </div>
+
+            {/* Primary nav */}
+            <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
+              {/* Section label */}
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", padding: "4px 8px 8px", margin: 0 }}>
+                Navigation
+              </p>
+
+              {([
+                { page: "landing",  label: "Home",      icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+                { page: "analyzer", label: "Analyze",   icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
+                { page: "dashboard",label: "Dashboard", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+              ] as { page: Page; label: string; icon: React.ReactNode }[]).map(item => {
+                const active = page === item.page;
+                return (
+                  <button
+                    key={item.page}
+                    onClick={() => { navigate(item.page); setMenuOpen(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      width: "100%", padding: "8px 10px",
+                      background: active ? "#eff6ff" : "transparent",
+                      border: "none", borderRadius: 8, cursor: "pointer",
+                      fontFamily: "inherit", textAlign: "left",
+                      transition: "background 0.15s",
+                      color: active ? "#2563eb" : "#374151",
+                    }}
+                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span style={{ color: active ? "#2563eb" : "#64748b", flexShrink: 0, display: "flex" }}>
+                      {item.icon}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: active ? 600 : 500, letterSpacing: "-0.01em" }}>
+                      {item.label}
+                    </span>
+                    {active && (
+                      <span style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: "#2563eb", flexShrink: 0 }} />
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* More section */}
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", padding: "16px 8px 8px", margin: 0 }}>
+                More
+              </p>
+
+              {([
+                { page: "learn",    label: "Learn",     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> },
+              ] as { page: Page; label: string; icon: React.ReactNode }[]).map(item => {
+                const active = page === item.page;
+                return (
+                  <button
+                    key={item.page}
+                    onClick={() => { navigate(item.page); setMenuOpen(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      width: "100%", padding: "8px 10px",
+                      background: active ? "#eff6ff" : "transparent",
+                      border: "none", borderRadius: 8, cursor: "pointer",
+                      fontFamily: "inherit", textAlign: "left",
+                      transition: "background 0.15s",
+                      color: active ? "#2563eb" : "#374151",
+                    }}
+                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span style={{ color: active ? "#2563eb" : "#64748b", flexShrink: 0, display: "flex" }}>
+                      {item.icon}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: active ? 600 : 500, letterSpacing: "-0.01em" }}>
+                      {item.label}
+                    </span>
+                    {active && (
+                      <span style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: "#2563eb", flexShrink: 0 }} />
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Auth item */}
+              <div style={{ height: 1, background: "#f1f5f9", margin: "12px 0 10px" }} />
+              <button
+                onClick={() => { openAuth(user ? "account" : "login"); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "8px 10px",
+                  background: "transparent", border: "none", borderRadius: 8,
+                  cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                  transition: "background 0.15s", color: "#374151",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <span style={{ color: "#64748b", flexShrink: 0, display: "flex" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em" }}>
+                  {user ? `Account (${user.name})` : "Log In"}
+                </span>
+              </button>
+            </nav>
+
+            {/* Footer — Privacy + Contact */}
+            <div style={{
+              padding: "12px 16px 16px", borderTop: "1px solid #f1f5f9", flexShrink: 0,
+              display: "flex", gap: 16, alignItems: "center",
+            }}>
+              {(["privacy", "contact"] as Page[]).map(p => (
+                <button
+                  key={p}
+                  onClick={() => { navigate(p); setMenuOpen(false); }}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11, fontWeight: 500,
+                    color: "#94a3b8", padding: 0, textTransform: "capitalize",
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                >
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </button>
+              ))}
+              <span style={{ fontSize: 11, color: "#e2e8f0", marginLeft: "auto" }}>© 2026</span>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
 {/* Blue sidebar removed — wordmark now in the top nav bar */}
