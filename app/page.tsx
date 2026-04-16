@@ -2,11 +2,92 @@
 import React, { useState, useRef, useEffect, useCallback, Fragment } from "react";
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
-const LS_SESSION  = "dealistic_session";   // { email, name, loginAt }
-const LS_USERS    = "dealistic_users";     // [{ email, name, passwordHash }]
+// Auth sessions are now managed by Supabase (cookie-based, see middleware.ts)
 const LS_DEALS    = "dealistic_deals";     // SavedDeal[] keyed by userEmail
-const LS_DEFAULTS = "dealistic_defaults";  // { vacancy, repairs, mgmt, rate, state }
-const LS_THEME   = "dealistic_theme";       // "light" | "dark" | "system"
+const LS_DEFAULTS   = "dealistic_defaults";  // { vacancy, repairs, mgmt, rate, state }
+const LS_FORM_DRAFT = "dealistic_form_draft"; // last form state for autosave
+
+
+// ─── Supabase client ──────────────────────────────────────────────────────────
+// ARTIFACT STUB — works in the Claude preview without external dependencies.
+// To deploy to Next.js, replace the entire function body with a real browser client.
+// See lib/supabase/client.ts for the exact implementation.
+// The stub stores accounts in localStorage so sign-up/login/session-persist
+// all work correctly inside the artifact preview.
+function createClient() {
+  type SupaUser = { id: string; email: string; last_sign_in_at: string; user_metadata: Record<string, string> };
+  type Listener = (event: string, session: { user: SupaUser } | null) => void;
+  const SESSION_KEY  = "supa_stub_session";
+  const ACCOUNTS_KEY = "supa_stub_accounts";
+  const listeners: Listener[] = [];
+
+  function stored(): { user: SupaUser } | null {
+    try { const v = localStorage.getItem(SESSION_KEY); return v ? JSON.parse(v) : null; } catch { return null; }
+  }
+  function emit(ev: string, session: { user: SupaUser } | null) {
+    listeners.forEach(fn => fn(ev, session));
+  }
+  function pwHash(pw: string): string {
+    let h = 0;
+    for (let i = 0; i < pw.length; i++) h = (Math.imul(31, h) + pw.charCodeAt(i)) | 0;
+    return h.toString(36);
+  }
+  function accounts(): Record<string, { name: string; hash: string }> {
+    try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "{}"); } catch { return {}; }
+  }
+
+  return {
+    auth: {
+      async getUser() {
+        const s = stored();
+        return { data: { user: s?.user ?? null }, error: null };
+      },
+      async signInWithPassword({ email, password }: { email: string; password: string }) {
+        const key = email.trim().toLowerCase();
+        const acct = accounts()[key];
+        if (!acct) return { data: { user: null }, error: { message: "User not found" } };
+        if (pwHash(password) !== acct.hash) return { data: { user: null }, error: { message: "Invalid credentials" } };
+        const user: SupaUser = { id: key, email: key, last_sign_in_at: new Date().toISOString(), user_metadata: { full_name: acct.name } };
+        localStorage.setItem(SESSION_KEY, JSON.stringify({ user }));
+        setTimeout(() => emit("SIGNED_IN", { user }), 0);
+        return { data: { user }, error: null };
+      },
+      async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, string> } }) {
+        const key  = email.trim().toLowerCase();
+        const accts = accounts();
+        if (accts[key]) return { data: { user: null }, error: { message: "User already registered" } };
+        const name = options?.data?.full_name ?? key.split("@")[0];
+        accts[key] = { name, hash: pwHash(password) };
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accts));
+        const user: SupaUser = { id: key, email: key, last_sign_in_at: new Date().toISOString(), user_metadata: { full_name: name } };
+        localStorage.setItem(SESSION_KEY, JSON.stringify({ user }));
+        setTimeout(() => emit("SIGNED_IN", { user }), 0);
+        return { data: { user }, error: null };
+      },
+      async signOut() {
+        localStorage.removeItem(SESSION_KEY);
+        setTimeout(() => emit("SIGNED_OUT", null), 0);
+        return { error: null };
+      },
+      onAuthStateChange(fn: Listener) {
+        listeners.push(fn);
+        const s = stored();
+        if (s) setTimeout(() => fn("SIGNED_IN", s), 0);
+        return {
+          data: {
+            subscription: {
+              unsubscribe() {
+                const i = listeners.indexOf(fn);
+                if (i > -1) listeners.splice(i, 1);
+              },
+            },
+          },
+        };
+      },
+    },
+  };
+}
+// ─── END Supabase stub ────────────────────────────────────────────────────────
 
 function lsGet<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
@@ -144,7 +225,8 @@ type Mode = "manual" | "csv";
 type SortKey = "score" | "cashflow" | "cap" | "coc";
 type AppMode = "buyer" | "investor";
 
-interface AuthUser { email: string; name: string; loginAt?: string; }
+// AuthUser is derived from the Supabase User object
+interface AuthUser { email: string; name: string; loginAt?: string; id?: string; }
 
 // ─── State investment scoring data ───────────────────────────────────────────
 // Each dimension is scored –2 (very bad) to +2 (very good) for investor.
@@ -346,19 +428,19 @@ function PillBtn({ children, onClick }: { children: React.ReactNode; onClick?: (
 }
 
 
-// ─── StateSelect — premium custom dropdown replacing native <select> ───────────
+// ─── StateSelect — premium custom dropdown (CSS-class based, dark-mode ready) ──
 function StateSelect({
-  value, onChange, style, width,
+  value, onChange, width,
 }: {
   value: string;
   onChange: (v: string) => void;
-  style?: React.CSSProperties;
   width?: number | string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const selected = US_STATES.find(s => s.abbr === value);
   const filtered = search.trim()
@@ -367,99 +449,90 @@ function StateSelect({
         s.abbr.toLowerCase().includes(search.toLowerCase()))
     : US_STATES;
 
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setSearch(""); }
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false); setSearch("");
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  // Focus search + scroll to selected when opening
   useEffect(() => {
-    if (!open || !value || !listRef.current) return;
-    const el = listRef.current.querySelector(".ss-selected") as HTMLElement | null;
-    if (el) el.scrollIntoView({ block: "nearest" });
+    if (!open) return;
+    setTimeout(() => searchRef.current?.focus(), 30);
+    if (value && listRef.current) {
+      const el = listRef.current.querySelector(".ss-selected") as HTMLElement | null;
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }
   }, [open, value]);
 
+  function pick(abbr: string) { onChange(abbr); setOpen(false); setSearch(""); }
+
   return (
-    <div ref={ref} style={{ position: "relative", width: width ?? "100%", ...style }}>
-      <button type="button" onClick={() => { setOpen(o => !o); setSearch(""); }}
-        style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-          gap: 8, padding: "8px 12px",
-          background: "var(--surface, #fff)",
-          border: `1.5px solid ${open ? "var(--blue, #2563eb)" : "var(--border, #e2e8f0)"}`,
-          borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontSize: 13,
-          color: selected ? "var(--text, #0f172a)" : "var(--faint, #94a3b8)",
-          boxShadow: open ? "0 0 0 3px var(--blue-ring, rgba(37,99,235,0.12))" : "none",
-          transition: "border-color 0.18s, box-shadow 0.18s", boxSizing: "border-box",
-        }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {selected ? `${selected.abbr} — ${selected.name}` : "Select state\u2026"}
+    <div ref={ref} style={{ position: "relative", width: width ?? "100%" }}>
+      {/* Trigger */}
+      <button
+        type="button"
+        className={"ss-trigger" + (open ? " open" : "") + (!selected ? " placeholder" : "")}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
+          {selected ? (width && Number(width) <= 100 ? selected.abbr : `${selected.abbr} — ${selected.name}`) : "State…"}
         </span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--faint,#94a3b8)" strokeWidth="2.5" strokeLinecap="round"
-          style={{ transition: "transform 0.18s", transform: open ? "rotate(180deg)" : "none", flexShrink: 0 }}>
+        <svg className="ss-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
 
+      {/* Dropdown panel */}
       {open && (
-        <div className="state-dropdown" style={{
-          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 400,
-          borderRadius: 14, background: "var(--surface, #fff)",
-          border: "1.5px solid var(--border, #e2e8f0)",
-          boxShadow: "0 8px 32px rgba(15,23,42,0.14)", overflow: "hidden",
-        }}>
-          <div style={{ padding: "8px 8px 6px", borderBottom: "1px solid var(--border, #f1f5f9)" }}>
-            <div style={{ position: "relative" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--faint,#94a3b8)" strokeWidth="2.2" strokeLinecap="round"
-                style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+        <div className="ss-panel">
+          {/* Search — icon + input as flex row, no absolute positioning */}
+          <div className="ss-search-wrap">
+            <span className="ss-search-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input autoFocus type="text" placeholder="Search states\u2026" value={search} onChange={e => setSearch(e.target.value)}
-                style={{
-                  width: "100%", boxSizing: "border-box", padding: "7px 10px 7px 28px",
-                  background: "var(--bg2, #f8fafc)", border: "1.5px solid var(--border, #e2e8f0)",
-                  borderRadius: 8, fontSize: 12, color: "var(--text, #0f172a)", fontFamily: "inherit", outline: "none",
-                  transition: "border-color 0.15s",
-                }}
-                onFocus={e => { e.currentTarget.style.borderColor = "var(--blue, #2563eb)"; }}
-                onBlur={e => { e.currentTarget.style.borderColor = "var(--border, #e2e8f0)"; }}
-              />
-            </div>
+            </span>
+            <input
+              ref={searchRef}
+              type="text"
+              className="ss-search"
+              placeholder="Search states…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                if (e.key === "Enter" && filtered.length === 1) pick(filtered[0].abbr);
+              }}
+            />
           </div>
-          <div ref={listRef} style={{ maxHeight: 224, overflowY: "auto", padding: "4px 0", scrollbarWidth: "thin" }}>
-            <div onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
-              style={{ padding: "8px 14px", cursor: "pointer", fontSize: 12, fontStyle: "italic",
-                color: !value ? "var(--blue,#2563eb)" : "var(--text3,#64748b)",
-                background: !value ? "var(--blue-bg,rgba(37,99,235,0.07))" : "transparent",
-                transition: "background 0.12s" }}
-              onMouseEnter={e => { if (value) (e.currentTarget as HTMLElement).style.background = "var(--bg2,#f8fafc)"; }}
-              onMouseLeave={e => { if (value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+
+          {/* List */}
+          <div ref={listRef} className="ss-list">
+            {/* Clear */}
+            <div
+              className={"ss-option ss-clear" + (!value ? " ss-selected" : "")}
+              onClick={() => pick("")}
+            >
               Any state
             </div>
+
             {filtered.length === 0 ? (
-              <div style={{ padding: "12px 14px", fontSize: 12, color: "var(--faint,#94a3b8)", textAlign: "center" }}>
-                No matches for "{search}"
-              </div>
+              <div className="ss-option ss-empty">No results for "{search}"</div>
             ) : filtered.map(s => {
               const isSel = s.abbr === value;
               return (
-                <div key={s.abbr} className={"ss-option" + (isSel ? " ss-selected" : "")}
-                  onClick={() => { onChange(s.abbr); setOpen(false); setSearch(""); }}
-                  style={{
-                    padding: "8px 14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
-                    background: isSel ? "var(--blue-bg,rgba(37,99,235,0.07))" : "transparent", transition: "background 0.12s",
-                  }}
-                  onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "var(--bg2,#f8fafc)"; }}
-                  onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
-                  <span style={{ fontSize: 12, color: isSel ? "var(--blue,#2563eb)" : "var(--text,#0f172a)", fontWeight: isSel ? 700 : 400 }}>
-                    <span style={{ fontWeight: 700, marginRight: 8, fontSize: 11, color: isSel ? "var(--blue,#2563eb)" : "var(--faint,#94a3b8)" }}>{s.abbr}</span>
-                    {s.name}
-                  </span>
+                <div key={s.abbr} className={"ss-option" + (isSel ? " ss-selected" : "")} onClick={() => pick(s.abbr)}>
+                  <span className="ss-abbr">{s.abbr}</span>
+                  <span className="ss-name">{s.name}</span>
                   {isSel && (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--blue,#2563eb)" strokeWidth="2.5" strokeLinecap="round">
+                    <svg className="ss-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   )}
@@ -473,54 +546,6 @@ function StateSelect({
   );
 }
 
-// ─── Theme ────────────────────────────────────────────────────────────────────
-type ThemeMode = "light" | "dark" | "system";
-
-function useTheme(): [ThemeMode, (t: ThemeMode) => void] {
-  const [mode, setModeState] = useState<ThemeMode>(() => lsGet<ThemeMode>(LS_THEME) ?? "system");
-  useEffect(() => {
-    function apply(m: ThemeMode) {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const isDark = m === "dark" || (m === "system" && prefersDark);
-      document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
-    }
-    apply(mode);
-    if (mode === "system") {
-      const mq = window.matchMedia("(prefers-color-scheme: dark)");
-      const handler = () => apply("system");
-      mq.addEventListener("change", handler);
-      return () => mq.removeEventListener("change", handler);
-    }
-  }, [mode]);
-  const set = (m: ThemeMode) => { setModeState(m); lsSet(LS_THEME, m); };
-  return [mode, set];
-}
-
-function ThemeToggle({ mode, setMode }: { mode: ThemeMode; setMode: (m: ThemeMode) => void }) {
-  const opts: { val: ThemeMode; icon: React.ReactNode; label: string }[] = [
-    { val: "light",  label: "Light",  icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> },
-    { val: "dark",   label: "Dark",   icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
-    { val: "system", label: "System", icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
-  ];
-  return (
-    <div style={{ display: "flex", background: "var(--bg2,#f1f5f9)", border: "1px solid var(--border,#e2e8f0)", borderRadius: 99, padding: 3, gap: 2 }}>
-      {opts.map(o => (
-        <button key={o.val} onClick={() => setMode(o.val)} title={o.label}
-          style={{
-            display: "flex", alignItems: "center", gap: 4, padding: "5px 9px",
-            border: "none", borderRadius: 99, cursor: "pointer", fontFamily: "inherit",
-            fontSize: 11, fontWeight: 600,
-            background: mode === o.val ? "var(--surface,#fff)" : "transparent",
-            color: mode === o.val ? "var(--text,#0f172a)" : "var(--faint,#94a3b8)",
-            boxShadow: mode === o.val ? "0 1px 4px rgba(15,23,42,0.1)" : "none",
-            transition: "all 0.15s",
-          }}>
-          {o.icon}{o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // ─── SmartField ───────────────────────────────────────────────────────────────
 interface SmartFieldProps {
@@ -4568,7 +4593,16 @@ function StateSummaryCard({ stateAbbr }: { stateAbbr: string }) {
 function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: SavedDeal) => void; prefill?: DealInput | null; user: AuthUser | null; onOpenLogin: () => void }) {
   const [mode, setMode] = useState<Mode>("manual");
   const [appMode, setAppMode] = useState<AppMode>("investor");
-  const [form, setForm] = useState<Record<string, string>>(EMPTY_FORM);
+
+  // ── Auto-save: restore last draft on mount ────────────────────────────────
+  const [form, setForm] = useState<Record<string, string>>(() => {
+    if (prefill) return EMPTY_FORM; // prefill overrides draft
+    const draft = lsGet<Record<string, string>>(LS_FORM_DRAFT);
+    if (draft && draft.price) return { ...EMPTY_FORM, ...draft };
+    return EMPTY_FORM;
+  });
+  const [draftStatus, setDraftStatus] = useState<"idle"|"saving"|"saved">("idle");
+
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRentEstimate, setShowRentEstimate] = useState(false);
   const [autoTax, setAutoTax] = useState(true); // true = use state estimate, false = manual
@@ -4583,6 +4617,27 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
   const fileRef = useRef<HTMLInputElement>(null);
   const rentInputRef = useRef<HTMLInputElement>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Debounced autosave: 1.2 s after last keystroke ────────────────────────
+  useEffect(() => {
+    // Only save if there's something meaningful in the form
+    const hasContent = Object.entries(form).some(([k, v]) =>
+      k !== "term" && k !== "vacancy" && v !== "" && v !== "0"
+    );
+    if (!hasContent) return;
+
+    setDraftStatus("saving");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      lsSet(LS_FORM_DRAFT, form);
+      setDraftStatus("saved");
+      // Reset to idle after 2.5 s
+      setTimeout(() => setDraftStatus("idle"), 2500);
+    }, 1200);
+
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [form]);
 
   useEffect(() => {
     if (!prefill) return;
@@ -4823,13 +4878,37 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
           </div>
 
           {/* Row 2: page title + subtitle */}
-          <div style={{ paddingTop: 20, paddingBottom: 20 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: "#0f172a", lineHeight: 1.2 }}>
-              {isBuyer ? "Home Buyer Calculator" : "Deal Analyzer"}
-            </h1>
-            <p style={{ fontSize: 13, color: "#64748b", marginTop: 5 }}>
-              {isBuyer ? "Understand your monthly costs before you buy" : "Enter details or upload a CSV"}
-            </p>
+          <div style={{ paddingTop: 20, paddingBottom: 20, display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: "#0f172a", lineHeight: 1.2 }}>
+                {isBuyer ? "Home Buyer Calculator" : "Deal Analyzer"}
+              </h1>
+              <p style={{ fontSize: 13, color: "#64748b", marginTop: 5 }}>
+                {isBuyer ? "Understand your monthly costs before you buy" : "Enter details or upload a CSV"}
+              </p>
+            </div>
+            {/* Draft status indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {draftStatus === "saved" && (
+                <span style={{ fontSize: 11, color: "#059669", display: "flex", alignItems: "center", gap: 4, fontWeight: 500 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Draft saved
+                </span>
+              )}
+              {draftStatus === "saving" && (
+                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>Saving…</span>
+              )}
+              {lsGet<Record<string,string>>(LS_FORM_DRAFT)?.price && (
+                <button
+                  onClick={() => { setForm(EMPTY_FORM); lsDel(LS_FORM_DRAFT); setResult(null); setDraftStatus("idle"); }}
+                  style={{ fontSize: 11, color: "#94a3b8", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0, transition: "color 0.15s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#dc2626"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                >
+                  Clear form
+                </button>
+              )}
+            </div>
           </div>
 
         </div>
@@ -6792,6 +6871,7 @@ function ContactPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
 // ─── Auth Pages ───────────────────────────────────────────────────────────────
 
 // Shared field for auth forms
+// ─── Shared auth primitives ───────────────────────────────────────────────────
 function AuthField({
   label, type, value, onChange, error, placeholder, hint,
 }: {
@@ -6800,8 +6880,8 @@ function AuthField({
 }) {
   const [focused, setFocused] = useState(false);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, fontWeight: 500 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", letterSpacing: "0.01em" }}>
         {label}
       </label>
       <input
@@ -6812,191 +6892,278 @@ function AuthField({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
-          width: "100%",
-          background: C.bg2,
-          border: `1px solid ${error ? C.red : focused ? C.text : C.rule}`,
-          borderRadius: 0,
-          color: C.text,
-          fontSize: 14,
-          padding: "12px 14px",
-          outline: "none",
-          fontFamily: "inherit",
-          transition: "border-color 0.12s",
-          boxSizing: "border-box",
+          width: "100%", boxSizing: "border-box",
+          background: "#fff",
+          border: `1.5px solid ${error ? "#dc2626" : focused ? "#2563eb" : "#e2e8f0"}`,
+          borderRadius: 10, color: "#0f172a", fontSize: 14,
+          padding: "10px 14px", outline: "none", fontFamily: "inherit",
+          boxShadow: focused ? `0 0 0 3px ${error ? "rgba(220,38,38,0.12)" : "rgba(37,99,235,0.12)"}` : "none",
+          transition: "border-color 0.18s, box-shadow 0.18s",
         }}
       />
-      {error && <p style={{ fontSize: 11, color: C.red, marginTop: 2 }}>{error}</p>}
-      {hint && !error && <p style={{ fontSize: 11, color: C.faint, marginTop: 2, fontStyle: "italic" }}>{hint}</p>}
+      {error && <p style={{ fontSize: 11, color: "#dc2626", margin: 0 }}>{error}</p>}
+      {hint && !error && <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>{hint}</p>}
     </div>
   );
 }
 
-// ─── User store — persisted to localStorage ───────────────────────────────────
-type StoredUser = { email: string; name: string; passwordHash: string };
 
-function hashish(s: string): string {
-  // Deterministic cheap hash — NOT for production use
-  let h = 0;
-  for (let i = 0; i < s.length; i++) { h = (Math.imul(31, h) + s.charCodeAt(i)) | 0; }
-  return String(h);
-}
-
-function getUsers(): StoredUser[] {
-  return lsGet<StoredUser[]>(LS_USERS) ?? [];
-}
-function saveUsers(users: StoredUser[]): void {
-  lsSet(LS_USERS, users);
-}
-
-function validate(email: string, password: string, name?: string) {
-  const errs: Record<string, string> = {};
-  if (!email.trim()) errs.email = "Email is required.";
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Enter a valid email address.";
-  if (!password) errs.password = "Password is required.";
-  else if (password.length < 8) errs.password = "Password must be at least 8 characters.";
-  if (name !== undefined && !name.trim()) errs.name = "Name is required.";
-  return errs;
-}
-
-// ── Sign Up Page ──────────────────────────────────────────────────────────────
-function SignUpPage({
-  onSuccess, onGoLogin,
-}: { onSuccess: (user: AuthUser) => void; onGoLogin: () => void; }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
-
-  function handleSubmit() {
-    setSubmitted(true);
-    const errs = validate(email, password, name);
-    if (confirm !== password) errs.confirm = "Passwords do not match.";
-    const users = getUsers();
-    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-      errs.email = "An account with this email already exists.";
-    }
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-    const stored = { email: email.toLowerCase(), name: name.trim(), passwordHash: hashish(password) };
-    saveUsers([...users, stored]);
-    onSuccess({ email: stored.email, name: stored.name, loginAt: new Date().toISOString() });
-  }
-
-  const e = submitted ? errors : {};
-
+// Shared card wrapper
+function AuthCard({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
-        {/* Header */}
-        <div style={{ marginBottom: 40 }}>
-          <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 12 }}>Dealistic</p>
-          <h1 style={{ fontSize: 32, fontWeight: 500, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Create account</h1>
-          <p style={{ fontSize: 13, color: C.muted, marginTop: 8, lineHeight: 1.6 }}>
-            Already have an account?{" "}
-            <button onClick={onGoLogin} style={{ background: "none", border: "none", color: C.blue, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline", textUnderlineOffset: 2 }}>
-              Log in
-            </button>
-          </p>
-        </div>
-
-        {/* Form */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <AuthField label="Full Name" type="text" placeholder="Jane Smith" value={name} onChange={setName} error={e.name} />
-          <AuthField label="Email" type="email" placeholder="you@example.com" value={email} onChange={setEmail} error={e.email} />
-          <AuthField
-            label="Password" type="password" placeholder="Min. 8 characters" value={password} onChange={setPassword}
-            error={e.password} hint="At least 8 characters."
-          />
-          <AuthField label="Confirm Password" type="password" placeholder="Repeat password" value={confirm} onChange={setConfirm} error={e.confirm} />
-
-          <button
-            onClick={handleSubmit}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            style={{ width: "100%", padding: "15px", background: C.text, color: C.bg, border: "none", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s", marginTop: 4 }}
-          >
-            Create Account
-          </button>
-        </div>
-
-        <p style={{ fontSize: 10, color: C.faint, marginTop: 24, lineHeight: 1.6, textAlign: "center" }}>
-          By signing up, you agree to our Terms and Privacy Policy.<br />Your data is stored in this browser session only.
-        </p>
+    <div style={{
+      background: "#f8fafc", minHeight: "100vh",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      padding: "clamp(24px,6vw,80px) 16px",
+    }}>
+      {/* Brand */}
+      <div style={{ marginBottom: 32, textAlign: "center" }}>
+        <span style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.03em", color: "#0f172a" }}>
+          Dealistic
+        </span>
+      </div>
+      {/* Card */}
+      <div style={{
+        width: "100%", maxWidth: 400,
+        background: "#fff", borderRadius: 20,
+        border: "1px solid #e2e8f0",
+        padding: "clamp(24px,5vw,36px) clamp(20px,5vw,36px)",
+        boxShadow: "0 4px 24px rgba(15,23,42,0.07), 0 1px 4px rgba(15,23,42,0.04)",
+      }}>
+        {children}
       </div>
     </div>
   );
 }
 
-// ── Log In Page ───────────────────────────────────────────────────────────────
+// ─── Auth — backed by Supabase ────────────────────────────────────────────────
+// Standalone login/signup pages live in:
+//   app/login/page.tsx   — calls signIn() Server Action
+//   app/signup/page.tsx  — calls signUp() Server Action
+//   app/auth/actions.ts  — Server Actions (real Supabase calls)
+//   middleware.ts        — session refresh + route protection
+//
+// The LogInPage / SignUpPage components below are kept for the in-SPA overlay flow
+// (when user clicks "Log In" from within the analyzer). They call Supabase directly
+// via the browser client.
+
+// ─── Shared Auth Field ─────────────────────────────────────────────────────────
+// (AuthField, AuthCard, etc. defined above are reused here)
+
+// ─── Supabase-powered LogInPage ────────────────────────────────────────────────
 function LogInPage({
   onSuccess, onGoSignUp,
 }: { onSuccess: (user: AuthUser) => void; onGoSignUp: () => void; }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [email, setEmail]         = useState("");
+  const [password, setPassword]   = useState("");
+  const [errors, setErrors]       = useState<Record<string, string>>({});
+  const [loading, setLoading]     = useState(false);
 
-  function handleSubmit() {
-    setSubmitted(true);
-    const errs = validate(email, password);
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-
-    const users = getUsers();
-    const match = users.find(
-      u => u.email === email.toLowerCase() && u.passwordHash === hashish(password)
-    );
-    if (!match) {
-      setErrors({ general: "Email or password is incorrect." });
+  async function handleSubmit() {
+    const trimEmail = email.trim().toLowerCase();
+    if (!trimEmail || !password) {
+      setErrors({ general: "Please enter your email and password." });
       return;
     }
-    onSuccess({ email: match.email, name: match.name, loginAt: new Date().toISOString() });
+    setLoading(true);
+    setErrors({});
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: trimEmail,
+      password,
+    });
+    setLoading(false);
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes("invalid login") || msg.includes("invalid credentials")) {
+        setErrors({ password: "Incorrect password. Please try again." });
+      } else if (msg.includes("user not found") || msg.includes("no user")) {
+        setErrors({ general: "No account found. Did you mean to sign up?" });
+      } else {
+        setErrors({ general: error.message });
+      }
+      return;
+    }
+    const sbUser = data.user;
+    if (!sbUser) { setErrors({ general: "Sign-in failed. Please try again." }); return; }
+    onSuccess({
+      id: sbUser.id,
+      email: sbUser.email ?? trimEmail,
+      name: (sbUser.user_metadata?.full_name as string | undefined) ?? trimEmail.split("@")[0],
+      loginAt: new Date().toISOString(),
+    });
   }
 
-  const e = submitted ? errors : {};
+  function handleKey(e: React.KeyboardEvent) { if (e.key === "Enter") handleSubmit(); }
+  const err = errors;
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
-        {/* Header */}
-        <div style={{ marginBottom: 40 }}>
-          <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 12 }}>Dealistic</p>
-          <h1 style={{ fontSize: 32, fontWeight: 500, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Log in</h1>
-          <p style={{ fontSize: 13, color: C.muted, marginTop: 8, lineHeight: 1.6 }}>
-            No account?{" "}
-            <button onClick={onGoSignUp} style={{ background: "none", border: "none", color: C.blue, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline", textUnderlineOffset: 2 }}>
-              Sign up free
-            </button>
-          </p>
-        </div>
-
-        {/* General error */}
-        {e.general && (
-          <div style={{ padding: "12px 14px", background: "#fdf0ef", border: `1px solid ${C.red}`, marginBottom: 20 }}>
-            <p style={{ fontSize: 12, color: C.red }}>{e.general}</p>
-          </div>
-        )}
-
-        {/* Form */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <AuthField label="Email" type="email" placeholder="you@example.com" value={email} onChange={setEmail} error={e.email} />
-          <AuthField label="Password" type="password" placeholder="Your password" value={password} onChange={setPassword} error={e.password} />
-
-          <button
-            onClick={handleSubmit}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            style={{ width: "100%", padding: "15px", background: C.text, color: C.bg, border: "none", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s", marginTop: 4 }}
-          >
-            Log In
-          </button>
-        </div>
+    <AuthCard>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: "0 0 6px" }}>
+          Welcome back
+        </h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Log in to your Dealistic account</p>
       </div>
-    </div>
+
+      {err.general && (
+        <div style={{ padding: "10px 14px", background: "#fff1f2", border: "1px solid #fecdd3", borderRadius: 10, marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: "#dc2626", margin: 0 }}>{err.general}</p>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AuthField label="Email" type="email" placeholder="you@example.com" value={email} onChange={setEmail} error={err.email} />
+        <AuthField label="Password" type="password" placeholder="Your password" value={password} onChange={setPassword}
+          error={err.password} />
+        <button
+          onClick={handleSubmit}
+          onKeyDown={handleKey}
+          disabled={loading}
+          onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.opacity = "0.88"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; } }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+          style={{
+            width: "100%", padding: "12px", border: "none", borderRadius: 10,
+            background: loading ? "#94a3b8" : "linear-gradient(135deg, #2563eb, #0ea5e9)",
+            color: "#fff", fontSize: 14, fontWeight: 700,
+            cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit",
+            boxShadow: loading ? "none" : "0 4px 14px rgba(37,99,235,0.3)",
+            transition: "opacity 0.15s, transform 0.15s",
+          }}
+        >
+          {loading ? "Logging in…" : "Log In →"}
+        </button>
+      </div>
+
+      <div style={{ height: 1, background: "#f1f5f9", margin: "24px 0 20px" }} />
+
+      <div style={{ background: "linear-gradient(135deg, #eff6ff, #f0fdf4)", border: "1px solid #bfdbfe", borderRadius: 14, padding: "16px 18px" }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>New to Dealistic?</p>
+        <p style={{ fontSize: 12, color: "#475569", margin: "0 0 14px", lineHeight: 1.55 }}>
+          Save deals, keep your defaults, and access your dashboard from any device.
+        </p>
+        <button
+          onClick={onGoSignUp}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#0f172a"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+          style={{ width: "100%", padding: "10px", border: "1.5px solid #0f172a", borderRadius: 9, background: "transparent", color: "#0f172a", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}
+        >
+          Create free account →
+        </button>
+      </div>
+
+      <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 18, textAlign: "center", lineHeight: 1.6 }}>
+        Session persists across page refreshes via Supabase.
+      </p>
+    </AuthCard>
   );
 }
+
+// ─── Supabase-powered SignUpPage ───────────────────────────────────────────────
+function SignUpPage({
+  onSuccess, onGoLogin,
+}: { onSuccess: (user: AuthUser) => void; onGoLogin: () => void; }) {
+  const [name, setName]         = useState("");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [errors, setErrors]     = useState<Record<string, string>>({});
+  const [loading, setLoading]   = useState(false);
+
+  async function handleSubmit() {
+    const errs: Record<string, string> = {};
+    const trimEmail = email.trim().toLowerCase();
+    if (!name.trim()) errs.name = "Name is required.";
+    if (!trimEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimEmail)) errs.email = "Enter a valid email address.";
+    if (password.length < 8) errs.password = "Password must be at least 8 characters.";
+    if (confirm !== password) errs.confirm = "Passwords do not match.";
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+
+    setLoading(true);
+    setErrors({});
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signUp({
+      email: trimEmail,
+      password,
+      options: { data: { full_name: name.trim() } },
+    });
+    setLoading(false);
+    if (error) {
+      if (error.message.toLowerCase().includes("already registered")) {
+        setErrors({ email: "An account with this email already exists. Try logging in." });
+      } else {
+        setErrors({ general: error.message });
+      }
+      return;
+    }
+    const sbUser = data.user;
+    if (!sbUser) { setErrors({ general: "Sign-up failed. Please try again." }); return; }
+    onSuccess({
+      id: sbUser.id,
+      email: sbUser.email ?? trimEmail,
+      name: name.trim(),
+      loginAt: new Date().toISOString(),
+    });
+  }
+
+  const err = errors;
+
+  return (
+    <AuthCard>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: "0 0 6px" }}>
+          Create your account
+        </h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Free forever. No credit card required.</p>
+      </div>
+
+      {err.general && (
+        <div style={{ padding: "10px 14px", background: "#fff1f2", border: "1px solid #fecdd3", borderRadius: 10, marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: "#dc2626", margin: 0 }}>{err.general}</p>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <AuthField label="Full Name" type="text" placeholder="Jane Smith" value={name} onChange={setName} error={err.name} />
+        <AuthField label="Email" type="email" placeholder="you@example.com" value={email} onChange={setEmail} error={err.email} />
+        <AuthField label="Password" type="password" placeholder="Min. 8 characters" value={password} onChange={setPassword}
+          error={err.password} hint="At least 8 characters." />
+        <AuthField label="Confirm Password" type="password" placeholder="Repeat password" value={confirm} onChange={setConfirm} error={err.confirm} />
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.opacity = "0.88"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; } }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+          style={{
+            width: "100%", padding: "12px", border: "none", borderRadius: 10, marginTop: 2,
+            background: loading ? "#94a3b8" : "linear-gradient(135deg, #2563eb, #0ea5e9)",
+            color: "#fff", fontSize: 14, fontWeight: 700,
+            cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit",
+            boxShadow: loading ? "none" : "0 4px 14px rgba(37,99,235,0.3)",
+            transition: "opacity 0.15s, transform 0.15s",
+          }}
+        >
+          {loading ? "Creating account…" : "Create Account →"}
+        </button>
+      </div>
+
+      <p style={{ fontSize: 13, color: "#64748b", textAlign: "center", marginTop: 22 }}>
+        Already have an account?{" "}
+        <button onClick={onGoLogin}
+          style={{ background: "none", border: "none", color: "#2563eb", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = "underline"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = "none"; }}>
+          Log in
+        </button>
+      </p>
+      <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 14, textAlign: "center", lineHeight: 1.6 }}>
+        By signing up, you agree to our Terms and Privacy Policy.
+      </p>
+    </AuthCard>
+  );
+}
+
 
 // ── Account Page ──────────────────────────────────────────────────────────────
 interface UserDefaults {
@@ -7005,15 +7172,13 @@ interface UserDefaults {
 const DEFAULT_SETTINGS: UserDefaults = { vacancy: "5", repairs: "5", mgmt: "8", rate: "7.25", state: "" };
 
 function AccountPage({
-  user, onLogOut, onNavigate, onBack, deals: allDeals, themeMode, setThemeMode,
+  user, onLogOut, onNavigate, onBack, deals: allDeals,
 }: {
   user: AuthUser;
   onLogOut: () => void;
   onNavigate: (p: Page) => void;
   onBack: () => void;
   deals: SavedDeal[];
-  themeMode: ThemeMode;
-  setThemeMode: (m: ThemeMode) => void;
 }) {
   const [showConfirm, setShowConfirm]   = useState(false);
   const [defaults, setDefaults]         = useState<UserDefaults>(() => lsGet<UserDefaults>(LS_DEFAULTS) ?? DEFAULT_SETTINGS);
@@ -7385,17 +7550,6 @@ function AccountPage({
               )}
             </div>
 
-            {/* Appearance */}
-            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 1px" }}>Appearance</p>
-                  <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>Light, Dark, or match your system</p>
-                </div>
-                <ThemeToggle mode={themeMode} setMode={setThemeMode} />
-              </div>
-            </div>
-
             <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.6 }}>
               Account data is stored locally in this browser.
             </p>
@@ -7408,7 +7562,6 @@ function AccountPage({
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function Dealistic() {
-  const [themeMode, setThemeMode] = useTheme();
   const [page, setPage] = useState<Page>("landing");
   const [prevPage, setPrevPage] = useState<Page>("landing");
   const [authPage, setAuthPage] = useState<AuthPage | null>(null);
@@ -7417,16 +7570,47 @@ export default function Dealistic() {
   const [deals, setDeals] = useState<SavedDeal[]>([]);
 
 
-  // ── Restore session + deals on mount ────────────────────────────────────
+  // ── Restore session via Supabase onAuthStateChange ─────────────────────
   useEffect(() => {
-    const session = lsGet<AuthUser>(LS_SESSION);
-    if (session?.email && session?.name) {
-      setUser(session);
-      // Restore deals for this user
-      const allDeals = lsGet<SavedDeal[]>(LS_DEALS) ?? [];
-      const myDeals = allDeals.filter(d => d.userEmail === session.email);
-      if (myDeals.length > 0) setDeals(myDeals);
-    }
+    const supabase = createClient();
+
+    // Get current session immediately (handles page refresh)
+    supabase.auth.getUser().then(({ data: { user: sbUser } }) => {
+      if (sbUser) {
+        const authUser: AuthUser = {
+          id: sbUser.id,
+          email: sbUser.email ?? "",
+          name: (sbUser.user_metadata?.full_name as string | undefined) ?? (sbUser.email?.split("@")[0] ?? ""),
+          loginAt: sbUser.last_sign_in_at ?? new Date().toISOString(),
+        };
+        setUser(authUser);
+        const allDeals = lsGet<SavedDeal[]>(LS_DEALS) ?? [];
+        const myDeals = allDeals.filter(d => d.userEmail === authUser.email);
+        if (myDeals.length > 0) setDeals(myDeals);
+      }
+    });
+
+    // Listen for sign-in / sign-out events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const sbUser = session.user;
+        const authUser: AuthUser = {
+          id: sbUser.id,
+          email: sbUser.email ?? "",
+          name: (sbUser.user_metadata?.full_name as string | undefined) ?? (sbUser.email?.split("@")[0] ?? ""),
+          loginAt: sbUser.last_sign_in_at ?? new Date().toISOString(),
+        };
+        setUser(authUser);
+        const allDeals = lsGet<SavedDeal[]>(LS_DEALS) ?? [];
+        const myDeals = allDeals.filter(d => d.userEmail === authUser.email);
+        if (myDeals.length > 0) setDeals(myDeals);
+      } else {
+        setUser(null);
+        setDeals([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const addDeal = useCallback((deal: SavedDeal) => {
@@ -7479,15 +7663,16 @@ export default function Dealistic() {
   const openAuth = (ap: AuthPage) => { setAuthPage(ap); setMenuOpen(false); window.scrollTo(0, 0); };
 
   function handleAuthSuccess(u: AuthUser) {
-    lsSet(LS_SESSION, u);   // persist session
+    // Session is persisted automatically by Supabase via cookie (see middleware.ts).
     setUser(u);
     setAuthPage(null);
     window.scrollTo(0, 0);
   }
-  function handleLogOut() {
-    lsDel(LS_SESSION);      // clear session
+  async function handleLogOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
     setUser(null);
-    setDeals([]);           // clear in-memory deals for this session
+    setDeals([]);
     setAuthPage(null);
     setPage("landing");
     window.scrollTo(0, 0);
@@ -7508,100 +7693,154 @@ export default function Dealistic() {
 
         /* ── Analyzer premium inputs ── */
 
-        /* ── CSS Custom Properties — theme-aware ─────────────────────── */
-        :root {
-          --bg:      #f8fafc;
-          --bg2:     #f1f5f9;
-          --surface: #ffffff;
-          --border:  #e2e8f0;
-          --border2: #cbd5e1;
-          --text:    #0f172a;
-          --text2:   #475569;
-          --text3:   #64748b;
-          --faint:   #94a3b8;
-          --blue:    #2563eb;
-          --blue-bg: rgba(37,99,235,0.08);
-          --blue-ring: rgba(37,99,235,0.12);
-          --green:   #059669;
-          --red:     #dc2626;
-          --amber:   #d97706;
-          --shadow-sm: 0 1px 3px rgba(15,23,42,0.06);
-          --shadow-md: 0 4px 16px rgba(15,23,42,0.08);
-          --nav-bg:  rgba(255,255,255,0.88);
+        /* ── StateSelect ──────────────────────────────────────────────── */
+        .ss-trigger {
+          width: 100%;
+          min-height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 7px 10px 7px 12px;
+          background: #fff;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 10px;
+          cursor: pointer;
+          font-family: inherit;
+          font-size: 13px;
+          line-height: 1.4;
+          color: #0f172a;
+          transition: border-color 0.18s, box-shadow 0.18s;
+          box-sizing: border-box;
+          outline: none;
+          text-align: left;
+          white-space: nowrap;
+          overflow: hidden;
         }
-        [data-theme="dark"] {
-          --bg:      #0f1117;
-          --bg2:     #161b27;
-          --surface: #1e2535;
-          --border:  #2d3748;
-          --border2: #374151;
-          --text:    #f1f5f9;
-          --text2:   #94a3b8;
-          --text3:   #64748b;
-          --faint:   #475569;
-          --blue:    #60a5fa;
-          --blue-bg: rgba(96,165,250,0.12);
-          --blue-ring: rgba(96,165,250,0.2);
-          --green:   #34d399;
-          --red:     #f87171;
-          --amber:   #fbbf24;
-          --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-          --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
-          --nav-bg:  rgba(15,17,23,0.92);
+        .ss-trigger:hover { border-color: #cbd5e1; }
+        .ss-trigger:focus, .ss-trigger.open {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37,99,235,0.14);
         }
-        /* Theme-aware overrides for global CSS classes */
-        [data-theme="dark"] body { background: var(--bg); color: var(--text); }
-        [data-theme="dark"] .az-card {
-          background: var(--surface);
-          border-color: var(--border);
+        .ss-trigger.placeholder { color: #94a3b8; }
+        .ss-trigger .ss-chevron {
+          flex-shrink: 0;
+          transition: transform 0.2s ease;
+          color: #94a3b8;
+          margin-left: auto;
         }
-        [data-theme="dark"] .az-input {
-          background: var(--bg2);
-          border-color: var(--border);
-          color: var(--text);
+        .ss-trigger.open .ss-chevron { transform: rotate(180deg); }
+
+        /* Panel sits below trigger, full-width of its container */
+        .ss-panel {
+          position: absolute;
+          top: calc(100% + 5px);
+          left: 0;
+          right: 0;
+          z-index: 400;
+          border-radius: 12px;
+          background: #fff;
+          border: 1.5px solid #e2e8f0;
+          box-shadow: 0 12px 40px rgba(15,23,42,0.13), 0 2px 8px rgba(15,23,42,0.06);
+          overflow: hidden;
         }
-        [data-theme="dark"] .az-input:focus {
-          border-color: var(--blue);
-          box-shadow: 0 0 0 3px var(--blue-ring);
+
+        /* Search row — icon is a sibling of input inside a flex row */
+        .ss-search-wrap {
+          display: flex;
+          align-items: center;
+          gap: 0;
+          padding: 8px 8px 7px;
+          border-bottom: 1px solid #f1f5f9;
+          background: #fff;
         }
-        [data-theme="dark"] .az-input::placeholder { color: var(--faint); }
-        [data-theme="dark"] .az-select {
-          background-color: var(--bg2);
-          border-color: var(--border);
-          color: var(--text);
+        .ss-search-icon {
+          flex-shrink: 0;
+          color: #94a3b8;
+          margin-left: 4px;
+          margin-right: 0;
+          pointer-events: none;
+          display: flex;
+          align-items: center;
         }
-        [data-theme="dark"] .az-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-ring); }
-        [data-theme="dark"] .az-btn-ghost {
-          border-color: var(--border);
-          color: var(--text2);
+        .ss-search {
+          flex: 1;
+          min-width: 0;
+          padding: 6px 8px 6px 7px;
+          background: transparent;
+          border: none;
+          outline: none;
+          font-size: 13px;
+          color: #0f172a;
+          font-family: inherit;
+          line-height: 1.4;
         }
-        [data-theme="dark"] .az-btn-ghost:hover {
-          border-color: var(--blue);
-          color: var(--blue);
-          background: var(--blue-bg);
+        .ss-search::placeholder { color: #94a3b8; }
+        /* Wrap gets the focus border, not the input */
+        .ss-search-wrap:focus-within {
+          background: #f8fafc;
+          border-bottom-color: #e2e8f0;
         }
-        [data-theme="dark"] .az-label { color: var(--text2); }
-        [data-theme="dark"] .az-hint  { color: var(--faint); }
-        [data-theme="dark"] .az-empty-state {
-          background: var(--surface);
-          border-color: var(--border2);
+
+        /* Option list */
+        .ss-list {
+          max-height: 224px;
+          overflow-y: auto;
+          padding: 4px 0;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
         }
-        [data-theme="dark"] .az-tip {
-          background: var(--bg2);
-          border-color: var(--border);
+        .ss-option {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          cursor: pointer;
+          font-size: 13px;
+          color: #0f172a;
+          line-height: 1.3;
+          transition: background 0.1s;
+          user-select: none;
+          white-space: nowrap;
+          overflow: hidden;
         }
-        [data-theme="dark"] .az-section-label::after { background: var(--border); }
-        [data-theme="dark"] .learn-inputs-grid > div { background: var(--surface); border-color: var(--border); }
-        [data-theme="dark"] .import-method-card { background: var(--bg2); border-color: var(--border); }
-        [data-theme="dark"] .import-method-card:hover { background: var(--surface); border-color: var(--border2); }
-        /* Custom scrollbar for dark mode */
-        [data-theme="dark"] ::-webkit-scrollbar { width: 6px; }
-        [data-theme="dark"] ::-webkit-scrollbar-track { background: var(--bg2); }
-        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
-        /* StateSelect dropdown dark */
-        [data-theme="dark"] .state-dropdown { background: var(--surface); border-color: var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
-        [data-theme="dark"] .state-option:hover { background: var(--bg2); }
-        [data-theme="dark"] .state-option.selected { background: var(--blue-bg); color: var(--blue); }
+        .ss-option:hover { background: #f8fafc; }
+        .ss-option.ss-selected {
+          background: rgba(37,99,235,0.06);
+          color: #2563eb;
+        }
+        .ss-option.ss-clear {
+          color: #64748b;
+          font-style: italic;
+          font-size: 12px;
+          padding: 7px 12px;
+        }
+        .ss-option.ss-clear:hover { background: #f8fafc; }
+        .ss-option.ss-empty {
+          color: #94a3b8;
+          font-style: italic;
+          justify-content: center;
+          cursor: default;
+          font-size: 12px;
+        }
+        .ss-option .ss-abbr {
+          font-size: 11px;
+          font-weight: 700;
+          color: #94a3b8;
+          width: 28px;
+          flex-shrink: 0;
+          letter-spacing: 0.03em;
+        }
+        .ss-option.ss-selected .ss-abbr { color: #2563eb; }
+        .ss-option .ss-name {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-weight: 400;
+        }
+        .ss-option.ss-selected .ss-name { font-weight: 600; }
+        .ss-check { color: #2563eb; flex-shrink: 0; margin-left: auto; }
+
         .az-input {
           width: 100%;
           background: #fff;
@@ -7803,7 +8042,6 @@ export default function Dealistic() {
             >
               Dealistic
             </button>
-            <ThemeToggle mode={themeMode} setMode={setThemeMode} />
           </div>
 
           {/* Right: auth */}
@@ -8040,8 +8278,6 @@ export default function Dealistic() {
           onNavigate={navigate}
           deals={deals}
           onBack={() => { setAuthPage(null); setPage(prevPage); window.scrollTo(0, 0); }}
-          themeMode={themeMode}
-          setThemeMode={setThemeMode}
         />
       )}
 
