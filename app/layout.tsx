@@ -15,9 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "Dealistic",
   description: "AI real estate analyzer",
-  icons: {
-    icon: "/icon.png",
-  },
 };
 
 export default function RootLayout({
