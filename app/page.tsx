@@ -67,7 +67,7 @@ interface AnalysisResult {
 }
 interface SavedDeal extends DealInput, DealResult { id: number; saved: boolean; savedAt?: string; userEmail?: string; }
 
-type Page = "landing" | "analyzer" | "dashboard" | "learn";
+type Page = "landing" | "analyzer" | "dashboard" | "learn" | "privacy" | "contact";
 type AuthPage = "login" | "signup" | "account";
 type Mode = "manual" | "csv";
 type SortKey = "score" | "cashflow" | "cap" | "coc";
@@ -2975,10 +2975,12 @@ function Step({
 
 // ─── SiteFooter — shared across LandingPage and LearnPage ───────────────────
 function SiteFooter({ onNavigate }: { onNavigate: (p: Page) => void }) {
-  const navLinks: { label: string; action: () => void; external?: boolean }[] = [
+  const navLinks: { label: string; action: () => void }[] = [
     { label: "Analyzer",  action: () => onNavigate("analyzer") },
     { label: "Dashboard", action: () => onNavigate("dashboard") },
     { label: "Learn",     action: () => onNavigate("learn") },
+    { label: "Privacy",   action: () => onNavigate("privacy") },
+    { label: "Contact",   action: () => onNavigate("contact") },
   ];
 
   const linkBase: React.CSSProperties = {
@@ -3028,7 +3030,7 @@ function SiteFooter({ onNavigate }: { onNavigate: (p: Page) => void }) {
         </div>
 
         {/* ── Right: nav links + LinkedIn ── */}
-        <nav style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
+        <nav style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
           {navLinks.map(link => (
             <button
               key={link.label}
@@ -3040,11 +3042,6 @@ function SiteFooter({ onNavigate }: { onNavigate: (p: Page) => void }) {
               {link.label}
             </button>
           ))}
-
-          {/* Privacy — plain text, no link */}
-          <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8", cursor: "default" }}>
-            Privacy
-          </span>
 
           {/* Divider */}
           <div style={{ width: 1, height: 14, background: "#e2e8f0", flexShrink: 0 }} />
@@ -5987,6 +5984,320 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
   );
 }
 
+// ─── PrivacyPage ─────────────────────────────────────────────────────────────
+function PrivacyPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
+  const CONTACT_EMAIL = "dealistic.app@gmail.com";
+  const sections: { id: string; title: string; body: React.ReactNode }[] = [
+    {
+      id: "intro", title: "Introduction",
+      body: <>
+        <p>Dealistic is a real estate deal analysis tool built to help investors and home buyers make faster, smarter decisions. This policy explains how we handle your data — written clearly, without legal jargon.</p>
+        <p>By using Dealistic you agree to the practices described here.</p>
+      </>,
+    },
+    {
+      id: "collect", title: "Information We Collect",
+      body: <>
+        <p>We collect only what's needed to make the product work:</p>
+        <ul>
+          <li><strong>Account info</strong> — your name and email address when you create an account.</li>
+          <li><strong>Property data you enter</strong> — purchase prices, rental income, expenses, and deal details you input manually or via CSV upload. This data belongs to you.</li>
+          <li><strong>Usage data</strong> — general interaction patterns (pages visited, features used) to improve the product. Not linked to specific property analyses.</li>
+          <li><strong>Browser storage</strong> — we use <code>localStorage</code> to save your session and deals locally in your browser.</li>
+        </ul>
+        <p>We do not collect payment information — Dealistic is free to use.</p>
+      </>,
+    },
+    {
+      id: "use", title: "How We Use Your Information",
+      body: <>
+        <p>Your information is used to authenticate your account, save and display your deal history, run calculations, and send only transactional emails (no promotional emails without your opt-in).</p>
+        <p><strong>We do not sell your data.</strong> We do not use your property data to train models or share it with advertisers.</p>
+      </>,
+    },
+    {
+      id: "storage", title: "Data Storage",
+      body: <>
+        <p>Deal data entered into the analyzer is stored primarily in your browser via <code>localStorage</code> — it lives on your device and is not transmitted to our servers unless you explicitly save it to your account.</p>
+        <p>When you create an account and save deals, that data is stored securely in our database and associated with your email. You can delete your account and all associated data at any time.</p>
+      </>,
+    },
+    {
+      id: "third-party", title: "Third-Party Services",
+      body: <>
+        <p>Dealistic uses a small number of third-party services:</p>
+        <ul>
+          <li><strong>Rentometer</strong> — opening Rentometer opens their site directly in your browser. We don't share your data with them.</li>
+          <li><strong>Zillow / Redfin</strong> — pasting a listing URL fetches publicly available listing data. No personal data is sent.</li>
+          <li><strong>Analytics</strong> — lightweight, privacy-respecting analytics for general usage patterns only.</li>
+        </ul>
+        <p>We do not embed advertising networks, social media trackers, or data brokers.</p>
+      </>,
+    },
+    {
+      id: "security", title: "Security",
+      body: <>
+        <p>We protect your information with encrypted connections (HTTPS), hashed password storage, and access controls. No system is perfectly secure — use a strong, unique password and log out of shared devices.</p>
+        <p>If you believe your account has been compromised, contact us immediately.</p>
+      </>,
+    },
+    {
+      id: "rights", title: "Your Rights",
+      body: <>
+        <p>You have the right to access, correct, or delete your data at any time. You can also export your saved deals from your dashboard. To exercise any of these rights, email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{CONTACT_EMAIL}</a>.</p>
+      </>,
+    },
+    {
+      id: "contact-section", title: "Contact",
+      body: <>
+        <p>Questions or concerns about this policy? Reach out:</p>
+        <p style={{ marginTop: 8 }}>
+          <strong>Email:</strong>{" "}
+          <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{CONTACT_EMAIL}</a>
+        </p>
+        <p>We aim to respond to all privacy-related inquiries within 5 business days.</p>
+      </>,
+    },
+  ];
+
+  const pStyle: React.CSSProperties = { fontSize: 14, color: "#334155", lineHeight: 1.8, margin: "0 0 12px" };
+  const ulStyle: React.CSSProperties = { listStyle: "none", padding: 0, margin: "8px 0 14px", display: "flex", flexDirection: "column", gap: 9 };
+  const liStyle: React.CSSProperties = { fontSize: 14, color: "#334155", lineHeight: 1.72, paddingLeft: 16, position: "relative" };
+
+  return (
+    <div style={{ background: "#f8fafc", minHeight: "100vh" }}>
+      {/* Back bar */}
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "rgba(255,255,255,0.9)", backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 clamp(16px,4vw,40px)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button onClick={() => onNavigate("landing")} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em", transition: "color 0.18s", padding: 0 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}>
+            Dealistic
+          </button>
+          <button onClick={() => onNavigate("landing")} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: "#64748b", padding: 0, transition: "color 0.18s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#64748b"; }}>
+            ← Back
+          </button>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "clamp(40px,6vw,72px) clamp(16px,4vw,40px) clamp(48px,7vw,80px)" }}>
+        {/* Header */}
+        <div style={{ marginBottom: 52, paddingBottom: 32, borderBottom: "1px solid #e2e8f0" }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 14 }}>Legal</span>
+          <h1 style={{ fontSize: "clamp(30px,5vw,48px)", fontWeight: 900, letterSpacing: "-0.045em", color: "#0f172a", lineHeight: 1.06, margin: "0 0 14px" }}>Privacy Policy</h1>
+          <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, margin: 0 }}>
+            How Dealistic handles your data — written clearly, without the legalese.
+            <br /><span style={{ color: "#94a3b8", fontSize: 13 }}>Last updated: April 15, 2026</span>
+          </p>
+        </div>
+
+        {/* Sections */}
+        {sections.map((s, i) => (
+          <div key={s.id} id={s.id} style={{ padding: "32px 0", borderBottom: i < sections.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+            <h2 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 4, height: 16, background: "linear-gradient(180deg,#2563eb,#0ea5e9)", borderRadius: 99, flexShrink: 0, display: "inline-block" }} />
+              {s.title}
+            </h2>
+            <div style={{ color: "#334155" }}>
+              <style>{`
+                #${s.id} p { ${Object.entries(pStyle).map(([k,v]) => `${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')} }
+                #${s.id} ul { ${Object.entries(ulStyle).map(([k,v]) => `${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')} }
+                #${s.id} li { ${Object.entries(liStyle).map(([k,v]) => `${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')} }
+                #${s.id} li::before { content:''; position:absolute; left:0; top:9px; width:5px; height:5px; border-radius:50%; background:#94a3b8; }
+                #${s.id} code { font-family:monospace; font-size:12px; background:#f1f5f9; border:1px solid #e2e8f0; color:#475569; padding:1px 6px; border-radius:5px; }
+                #${s.id} strong { color:#0f172a; font-weight:700; }
+              `}</style>
+              {s.body}
+            </div>
+          </div>
+        ))}
+      </div>
+      <SiteFooter onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+// ─── ContactPage ──────────────────────────────────────────────────────────────
+function ContactPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
+  const CONTACT_EMAIL = "dealistic.app@gmail.com";
+  const [form, setForm] = useState({ name: "", email: "", phone: "", message: "" });
+  const [submitted, setSubmitted] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
+
+  const handleSubmit = () => {
+    if (!form.name.trim() || !form.email.trim() || !form.message.trim()) return;
+    // mailto fallback — opens the user's mail client with pre-filled content
+    const subject = encodeURIComponent(`Dealistic Contact: ${form.name}`);
+    const body = encodeURIComponent(
+      `Name: ${form.name}\nEmail: ${form.email}${form.phone ? `\nPhone: ${form.phone}` : ""}\n\n${form.message}`
+    );
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+    setSubmitted(true);
+  };
+
+  const inputStyle = (field: string): React.CSSProperties => ({
+    width: "100%", boxSizing: "border-box",
+    padding: "12px 14px",
+    background: "#fff",
+    border: `1.5px solid ${focused === field ? "#2563eb" : "#e2e8f0"}`,
+    borderRadius: 12,
+    fontSize: 14, color: "#0f172a", fontFamily: "inherit",
+    outline: "none",
+    boxShadow: focused === field ? "0 0 0 3px rgba(37,99,235,0.12)" : "0 1px 3px rgba(15,23,42,0.04)",
+    transition: "border-color 0.18s, box-shadow 0.18s",
+  });
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 700, color: "#374151",
+    display: "block", marginBottom: 6, letterSpacing: "0.01em",
+  };
+
+  return (
+    <div style={{ background: "#f8fafc", minHeight: "100vh" }}>
+      {/* Back bar */}
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "rgba(255,255,255,0.9)", backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 clamp(16px,4vw,40px)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button onClick={() => onNavigate("landing")} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em", transition: "color 0.18s", padding: 0 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}>
+            Dealistic
+          </button>
+          <button onClick={() => onNavigate("landing")} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: "#64748b", padding: 0, transition: "color 0.18s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#64748b"; }}>
+            ← Back
+          </button>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "clamp(40px,6vw,72px) clamp(16px,4vw,40px) clamp(48px,7vw,80px)" }}>
+
+        {/* Page header */}
+        <div style={{ marginBottom: 44, textAlign: "center" }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 14 }}>Get in touch</span>
+          <h1 style={{ fontSize: "clamp(28px,5vw,44px)", fontWeight: 900, letterSpacing: "-0.045em", color: "#0f172a", lineHeight: 1.1, margin: "0 0 14px" }}>
+            Contact Dealistic
+          </h1>
+          <p style={{ fontSize: 15, color: "#64748b", lineHeight: 1.7, margin: "0 auto", maxWidth: 420 }}>
+            Have a question, found a bug, or want to suggest a feature? We'd love to hear from you.
+          </p>
+        </div>
+
+        {submitted ? (
+          /* ── Success state ── */
+          <div style={{ background: "rgba(255,255,255,0.92)", border: "1px solid #e2e8f0", borderRadius: 24, padding: "52px 40px", textAlign: "center", boxShadow: "0 4px 24px rgba(15,23,42,0.06)" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 24 }}>
+              ✓
+            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", marginBottom: 10 }}>Message sent!</h2>
+            <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.7, marginBottom: 28 }}>
+              Your mail app should have opened with the message pre-filled. We'll reply to <strong style={{ color: "#0f172a" }}>{form.email}</strong> as soon as possible.
+            </p>
+            <button
+              onClick={() => { setSubmitted(false); setForm({ name: "", email: "", phone: "", message: "" }); }}
+              style={{ padding: "10px 24px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "#fff", color: "#475569", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.18s" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2563eb"; (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+            >
+              Send another message
+            </button>
+          </div>
+        ) : (
+          /* ── Form card ── */
+          <div style={{ background: "rgba(255,255,255,0.92)", border: "1px solid #e2e8f0", borderRadius: 24, padding: "clamp(28px,4vw,44px)", boxShadow: "0 4px 24px rgba(15,23,42,0.06)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+
+              {/* Name + Email row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))", gap: 16 }}>
+                <div>
+                  <label style={labelStyle}>Name <span style={{ color: "#dc2626" }}>*</span></label>
+                  <input
+                    type="text" placeholder="Your name"
+                    value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    onFocus={() => setFocused("name")} onBlur={() => setFocused(null)}
+                    style={inputStyle("name")}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Email <span style={{ color: "#dc2626" }}>*</span></label>
+                  <input
+                    type="email" placeholder="your@email.com"
+                    value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    onFocus={() => setFocused("email")} onBlur={() => setFocused(null)}
+                    style={inputStyle("email")}
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label style={labelStyle}>
+                  Phone <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>(optional)</span>
+                </label>
+                <input
+                  type="tel" placeholder="+1 (555) 000-0000"
+                  value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  onFocus={() => setFocused("phone")} onBlur={() => setFocused(null)}
+                  style={inputStyle("phone")}
+                />
+              </div>
+
+              {/* Message */}
+              <div>
+                <label style={labelStyle}>Message <span style={{ color: "#dc2626" }}>*</span></label>
+                <textarea
+                  placeholder="Tell us what's on your mind — feedback, questions, feature requests, or bug reports are all welcome."
+                  rows={5}
+                  value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+                  onFocus={() => setFocused("message")} onBlur={() => setFocused(null)}
+                  style={{ ...inputStyle("message"), resize: "vertical", minHeight: 120 } as React.CSSProperties}
+                />
+              </div>
+
+              {/* Submit */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
+                  Or email directly:{" "}
+                  <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}>
+                    {CONTACT_EMAIL}
+                  </a>
+                </p>
+                <button
+                  onClick={handleSubmit}
+                  disabled={!form.name.trim() || !form.email.trim() || !form.message.trim()}
+                  style={{
+                    padding: "13px 32px", border: "none", borderRadius: 12,
+                    background: (!form.name.trim() || !form.email.trim() || !form.message.trim())
+                      ? "#e2e8f0"
+                      : "linear-gradient(135deg,#2563eb,#0ea5e9)",
+                    color: (!form.name.trim() || !form.email.trim() || !form.message.trim()) ? "#94a3b8" : "#fff",
+                    fontSize: 14, fontWeight: 700, cursor: (!form.name.trim() || !form.email.trim() || !form.message.trim()) ? "not-allowed" : "pointer",
+                    fontFamily: "inherit", transition: "all 0.18s",
+                    boxShadow: (!form.name.trim() || !form.email.trim() || !form.message.trim()) ? "none" : "0 4px 14px rgba(37,99,235,0.28)",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={e => { if (form.name.trim() && form.email.trim() && form.message.trim()) { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(37,99,235,0.36)"; } }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "none"; (e.currentTarget as HTMLElement).style.boxShadow = form.name.trim() && form.email.trim() && form.message.trim() ? "0 4px 14px rgba(37,99,235,0.28)" : "none"; }}
+                >
+                  Send Message →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Trust note */}
+        <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 24, lineHeight: 1.6 }}>
+          We typically respond within 1–2 business days. Your message goes directly to the founder.
+        </p>
+      </div>
+      <SiteFooter onNavigate={onNavigate} />
+    </div>
+  );
+}
+
 // ─── Auth Pages ───────────────────────────────────────────────────────────────
 
 // Shared field for auth forms
@@ -6624,7 +6935,7 @@ export default function Dealistic() {
             </button>
           </div>
           <nav style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"], ["learn", "Learn"]] as [Page, string][]).map(([p, label]) => (
+            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"], ["learn", "Learn"], ["privacy", "Privacy"], ["contact", "Contact"]] as [Page, string][]).map(([p, label]) => (
               <button
                 key={p}
                 onClick={() => navigate(p)}
@@ -6670,6 +6981,8 @@ export default function Dealistic() {
         <div>
           {page === "landing" && <LandingPage onAnalyze={() => navigate("analyzer")} onLearn={() => navigate("learn")} onNavigate={navigate} />}
           {page === "learn" && <LearnPage onAnalyze={() => navigate("analyzer")} onNavigate={navigate} />}
+          {page === "privacy" && <PrivacyPage onNavigate={navigate} />}
+          {page === "contact" && <ContactPage onNavigate={navigate} />}
           {page === "analyzer" && <AnalyzerPage onSave={addDeal} prefill={null} user={user} onOpenLogin={() => openAuth("login")} />}
           {page === "dashboard" && (
             <DashboardPage
