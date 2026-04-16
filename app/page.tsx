@@ -5763,7 +5763,7 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
       </section>
 
       {/* ── A · INPUTS ────────────────────────────────────────────────────── */}
-      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,5vw,64px)" }}>
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,5vw,64px)" }}>
         <FadeIn>
           <span style={eyebrow("A · Inputs", "#2563eb")}>A · Inputs</span>
           <h2 style={sectionH2}>What Dealistic needs from you.</h2>
@@ -5772,8 +5772,22 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
           </p>
         </FadeIn>
 
-        {/* Input groups */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+        {/* Input groups — 3 col desktop, 2 col tablet, 1 col mobile */}
+        <style>{`
+          .learn-inputs-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            align-items: start;
+          }
+          @media (max-width: 860px) {
+            .learn-inputs-grid { grid-template-columns: repeat(2, 1fr); }
+          }
+          @media (max-width: 540px) {
+            .learn-inputs-grid { grid-template-columns: 1fr; }
+          }
+        `}</style>
+        <div className="learn-inputs-grid">
           {([
             {
               group: "Financing",
@@ -5806,16 +5820,20 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
             },
           ] as { group: string; color: string; fields: { name: string; note: string }[] }[]).map((g, gi) => (
             <FadeIn key={gi} delay={gi * 0.06}>
-              <div style={{ background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0", borderRadius: 18, overflow: "hidden" }}>
-                <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0",
+                borderRadius: 16, overflow: "hidden", height: "100%",
+                display: "flex", flexDirection: "column",
+              }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: g.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 11, fontWeight: 800, color: "#0f172a", letterSpacing: "0.02em" }}>{g.group}</span>
                 </div>
-                <div style={{ padding: "4px 0" }}>
+                <div style={{ padding: "2px 0", flex: 1 }}>
                   {g.fields.map((f, fi) => (
-                    <div key={fi} style={{ padding: "11px 18px", borderBottom: fi < g.fields.length - 1 ? "1px solid #f8fafc" : "none" }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 3 }}>{f.name}</p>
-                      <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, margin: 0 }}>{f.note}</p>
+                    <div key={fi} style={{ padding: "10px 16px", borderBottom: fi < g.fields.length - 1 ? "1px solid #f8fafc" : "none" }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 2 }}>{f.name}</p>
+                      <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5, margin: 0 }}>{f.note}</p>
                     </div>
                   ))}
                 </div>
@@ -5824,17 +5842,100 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
           ))}
         </div>
 
-        {/* Import methods */}
+        {/* Import methods — 3-col feature block */}
         <FadeIn delay={0.2}>
-          <div style={{ marginTop: 20, background: "linear-gradient(135deg, #eff6ff, #f0fdf4)", border: "1px solid #bfdbfe", borderRadius: 16, padding: "20px 22px", display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 18, flexShrink: 0 }}>💡</div>
-            <div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#1e3a5f", marginBottom: 6 }}>Three ways to start an analysis</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 20px" }}>
-                {["Paste a Zillow or Redfin URL — address auto-fills instantly", "Upload a CSV to analyze dozens of properties at once", "Type numbers manually — defaults fill in what you skip"].map((t, i) => (
-                  <p key={i} style={{ fontSize: 12, color: "#2563eb", margin: 0 }}>→ {t}</p>
-                ))}
-              </div>
+          <div style={{
+            marginTop: 24,
+            background: "rgba(255,255,255,0.7)",
+            border: "1px solid #e2e8f0",
+            borderRadius: 20,
+            padding: "24px 24px 20px",
+            backdropFilter: "blur(8px)",
+          }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 18 }}>
+              Three ways to start an analysis
+            </p>
+            <style>{`
+              .import-methods-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+              }
+              @media (max-width: 640px) {
+                .import-methods-grid { grid-template-columns: 1fr; }
+              }
+              .import-method-card {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 14px;
+                padding: 16px;
+                cursor: default;
+                transition: background 0.18s, border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+              }
+              .import-method-card:hover {
+                background: #fff;
+                border-color: #cbd5e1;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 16px rgba(15,23,42,0.07);
+              }
+            `}</style>
+            <div className="import-methods-grid">
+              {([
+                {
+                  icon: (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                    </svg>
+                  ),
+                  color: "#2563eb",
+                  title: "Paste a listing URL",
+                  desc: "Drop in a Zillow or Redfin link — address and price auto-fill instantly.",
+                },
+                {
+                  icon: (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                  ),
+                  color: "#7c3aed",
+                  title: "Upload a CSV",
+                  desc: "Analyze dozens of deals at once. Strong ones are flagged automatically.",
+                },
+                {
+                  icon: (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  ),
+                  color: "#059669",
+                  title: "Enter numbers manually",
+                  desc: "Fill in a few fields. Smart defaults handle anything you leave blank.",
+                },
+              ] as { icon: React.ReactNode; color: string; title: string; desc: string }[]).map((item, i) => (
+                <div key={i} className="import-method-card">
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 10, marginBottom: 12,
+                    background: item.color + "12",
+                    border: `1px solid ${item.color}25`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: item.color,
+                  }}>
+                    {item.icon}
+                  </div>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 4, letterSpacing: "-0.01em" }}>
+                    {item.title}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.55, margin: 0 }}>
+                    {item.desc}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
         </FadeIn>
