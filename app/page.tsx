@@ -1203,6 +1203,414 @@ function buildOptimizations(r: DealResult, d: DealInput): Optimization[] {
   return opts.sort((a, b) => b.scoreDelta - a.scoreDelta).slice(0, 3);
 }
 
+// ─── RentVsBuyCard ─────────────────────────────────────────────────────────────
+interface RvbAssumptions {
+  holdYears:      number;   // 1–20
+  appreciation:   number;   // % per year
+  rentGrowth:     number;   // % per year
+  opportunityCost:number;   // % per year on down payment
+  sellingCost:    number;   // % of sale price
+  currentRent:    number;   // alternative monthly rent
+}
+const RVB_DEFAULTS: RvbAssumptions = {
+  holdYears: 7, appreciation: 3.5, rentGrowth: 3,
+  opportunityCost: 6, sellingCost: 6, currentRent: 0,
+};
+
+function calcRvb(d: DealInput, r: DealResult, a: RvbAssumptions) {
+  const { holdYears: Y, appreciation: appPct, rentGrowth: rgPct,
+          opportunityCost: ocPct, sellingCost: scPct, currentRent: altRent } = a;
+
+  // ── Buy side per year ──────────────────────────────────────────────────────
+  const downCash    = d.down;
+  const loanAmt     = d.price - d.down;
+  const monthlyRate = d.rate / 100 / 12;
+  const nMonths     = d.term * 12;
+  // Mortgage P&I (same as calcDeal)
+  const pAndI       = monthlyRate > 0
+    ? loanAmt * (monthlyRate * Math.pow(1 + monthlyRate, nMonths)) / (Math.pow(1 + monthlyRate, nMonths) - 1)
+    : loanAmt / nMonths;
+
+  // Opportunity cost of down payment (compounded)
+  const ocRate = ocPct / 100;
+
+  // Build year-by-year buy totals
+  const buyYearly: number[] = [0];
+  let remainingBal = loanAmt;
+  let cumBuyCost = 0;
+  // Closing costs (approx 2.5% of price up front)
+  cumBuyCost += d.price * 0.025;
+  // Down payment is not a "cost" but the opportunity cost is
+  let ocBase = downCash;
+
+  for (let yr = 1; yr <= 20; yr++) {
+    let yearCost = 0;
+    for (let mo = 0; mo < 12; mo++) {
+      const interest = remainingBal * monthlyRate;
+      const principal = pAndI - interest;
+      remainingBal = Math.max(0, remainingBal - principal);
+      // True costs: interest, taxes, insurance, HOA, repairs (not principal — that's equity)
+      yearCost += interest + (d.taxes + d.insurance + d.hoa + d.repairs + d.mgmt + d.other);
+    }
+    // Opportunity cost of equity tied up (compounded on down + equity accumulated) — simplified: use down * (1+ocRate)^yr each year delta
+    const ocCost = ocBase * ocRate;
+    ocBase = ocBase * (1 + ocRate);
+    yearCost += ocCost;
+
+    // Sale proceeds net (value - remaining balance - selling costs)
+    const saleVal     = d.price * Math.pow(1 + appPct / 100, yr);
+    const sellingCosts = saleVal * (scPct / 100);
+    const netProceeds  = saleVal - remainingBal - sellingCosts - d.down; // equity gain
+
+    cumBuyCost += yearCost;
+    // Effective buy cost = cumulative costs - net equity gain
+    const effectiveBuyCost = Math.max(0, cumBuyCost - Math.max(0, netProceeds));
+    buyYearly.push(Math.round(effectiveBuyCost));
+  }
+
+  // ── Rent side per year ─────────────────────────────────────────────────────
+  const baseRent   = altRent > 0 ? altRent : (d.rent > 0 ? d.rent : Math.round(d.price * 0.007));
+  const rentYearly: number[] = [0];
+  let cumRentCost  = 0;
+  for (let yr = 1; yr <= 20; yr++) {
+    const mo = baseRent * Math.pow(1 + rgPct / 100, yr - 1) * 12;
+    // Renter keeps the down — grows at opportunity cost rate (gain, so subtract from rent cost)
+    const downGrowth = downCash * (Math.pow(1 + ocRate, yr) - Math.pow(1 + ocRate, yr - 1));
+    cumRentCost += mo - downGrowth;
+    rentYearly.push(Math.round(Math.max(0, cumRentCost)));
+  }
+
+  // ── Break-even year ────────────────────────────────────────────────────────
+  let breakEvenYear = -1;
+  for (let yr = 1; yr <= 20; yr++) {
+    if (buyYearly[yr] <= rentYearly[yr]) { breakEvenYear = yr; break; }
+  }
+
+  const holdBuy  = buyYearly[Math.min(Y, 20)];
+  const holdRent = rentYearly[Math.min(Y, 20)];
+  const diff     = holdRent - holdBuy;
+  const cheaper  = diff > 0 ? "buy" : "rent";
+  const savings  = Math.abs(diff);
+  const monthly  = Math.round(savings / 12 / Y);
+
+  return { buyYearly, rentYearly, breakEvenYear, cheaper, savings, monthly, holdBuy, holdRent, baseRent };
+}
+
+function RentVsBuyCard({ d, r }: { d: DealInput; r: DealResult }) {
+  const [open, setOpen]         = useState(false);
+  const [adv, setAdv]           = useState(false); // advanced panel
+  const [assume, setAssume]     = useState<RvbAssumptions>({ ...RVB_DEFAULTS });
+  const [hovered, setHovered]   = useState<number | null>(null);
+  const [tooltipX, setTooltipX] = useState(0);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const upd = (k: keyof RvbAssumptions) => (v: number) =>
+    setAssume(a => ({ ...a, [k]: v }));
+
+  if (!open) {
+    return (
+      <div style={{ marginBottom: 32 }}>
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            width: "100%", padding: "14px 20px",
+            background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0",
+            borderRadius: 16, cursor: "pointer", fontFamily: "inherit",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            transition: "all 0.18s", boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2563eb"; (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(37,99,235,0.1)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 4px rgba(15,23,42,0.04)"; }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 18 }}>🏠</span>
+            <div style={{ textAlign: "left" }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>Rent vs. Buy Comparison</p>
+              <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>See when buying breaks even vs. renting</p>
+            </div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+    );
+  }
+
+  const calc = calcRvb(d, r, assume);
+  const { buyYearly, rentYearly, breakEvenYear, cheaper, monthly, baseRent } = calc;
+  const Y = Math.min(assume.holdYears, 20);
+
+  // ── SVG chart geometry ─────────────────────────────────────────────────────
+  const W = 460, H = 200, PL = 52, PR = 16, PT = 16, PB = 32;
+  const chartW = W - PL - PR, chartH = H - PT - PB;
+  const maxVal = Math.max(...buyYearly.slice(1, 21), ...rentYearly.slice(1, 21), 1);
+  const px = (yr: number) => PL + (yr - 1) / 19 * chartW;
+  const py = (v: number)  => PT + chartH - (v / maxVal) * chartH;
+
+  const buyPath  = buyYearly.slice(1, 21).map((v, i) => `${i === 0 ? "M" : "L"}${px(i + 1)},${py(v)}`).join(" ");
+  const rentPath = rentYearly.slice(1, 21).map((v, i) => `${i === 0 ? "M" : "L"}${px(i + 1)},${py(v)}`).join(" ");
+
+  const fmt$ = (n: number) => n >= 1000000
+    ? "$" + (n / 1000000).toFixed(1) + "M"
+    : "$" + Math.round(n / 1000) + "k";
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left - PL;
+    const yr = Math.round(x / chartW * 19) + 1;
+    if (yr >= 1 && yr <= 20) { setHovered(yr); setTooltipX(px(yr)); }
+  };
+
+  const summaryBuy   = cheaper === "buy";
+  const summaryColor = summaryBuy ? "#059669" : "#2563eb";
+
+  return (
+    <div style={{ marginBottom: 32 }}>
+      {/* ── Section header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, letterSpacing: "0.13em", textTransform: "uppercase", color: "#64748b", fontWeight: 700 }}>
+          <span>Rent vs. Buy</span>
+          <div style={{ flex: 1, height: 1, background: "#e2e8f0", width: 40 }} />
+        </div>
+        <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", fontFamily: "inherit", padding: 0, transition: "color 0.15s" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}>
+          Hide ↑
+        </button>
+      </div>
+
+      {/* ── Summary headline ── */}
+      <div style={{
+        background: summaryBuy ? "linear-gradient(135deg,#f0fdf4,#f0f9ff)" : "linear-gradient(135deg,#f0f9ff,#f5f3ff)",
+        border: `1px solid ${summaryBuy ? "#bbf7d0" : "#bfdbfe"}`,
+        borderRadius: 14, padding: "14px 18px", marginBottom: 16,
+      }}>
+        <p style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em", margin: "0 0 4px" }}>
+          {summaryBuy
+            ? `Buying is cheaper if you stay ${Y} year${Y !== 1 ? "s" : ""}.`
+            : `Renting is cheaper for ${Y} year${Y !== 1 ? "s" : ""}.`}
+        </p>
+        <p style={{ fontSize: 12, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+          {summaryBuy
+            ? `You save roughly $${monthly.toLocaleString()}/mo (avg) by buying over renting at $${baseRent.toLocaleString()}/mo.`
+            : `You save roughly $${monthly.toLocaleString()}/mo (avg) by renting instead of buying.`}
+          {breakEvenYear > 0 && ` Break-even at year ${breakEvenYear}.`}
+          {breakEvenYear < 0 && ` Buying never outpaces renting in this scenario.`}
+        </p>
+      </div>
+
+      {/* ── Hold period slider ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600, whiteSpace: "nowrap" }}>Hold period</span>
+        <input type="range" min={1} max={20} step={1} value={assume.holdYears}
+          onChange={e => upd("holdYears")(+e.target.value)}
+          style={{ flex: 1, accentColor: summaryColor, height: 4, cursor: "pointer" }}
+        />
+        <span style={{ fontSize: 13, fontWeight: 800, color: summaryColor, minWidth: 40, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {assume.holdYears} yr{assume.holdYears !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* ── SVG chart ── */}
+      <div style={{ background: "#fff", border: "1px solid #f1f5f9", borderRadius: 14, padding: "12px 8px 6px", marginBottom: 12, position: "relative", overflow: "hidden" }}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ width: "100%", display: "block", userSelect: "none", touchAction: "none" }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHovered(null)}
+        >
+          {/* Grid lines */}
+          {[0.25, 0.5, 0.75, 1].map(f => (
+            <line key={f}
+              x1={PL} y1={PT + chartH - f * chartH}
+              x2={W - PR} y2={PT + chartH - f * chartH}
+              stroke="#f1f5f9" strokeWidth={1} />
+          ))}
+          {/* Y axis labels */}
+          {[0.25, 0.5, 0.75, 1].map(f => (
+            <text key={f} x={PL - 6} y={PT + chartH - f * chartH + 4}
+              textAnchor="end" style={{ fontSize: 9, fill: "#94a3b8" }}>
+              {fmt$(maxVal * f)}
+            </text>
+          ))}
+          {/* X axis labels */}
+          {[1, 5, 10, 15, 20].map(yr => (
+            <text key={yr} x={px(yr)} y={H - 6}
+              textAnchor="middle" style={{ fontSize: 9, fill: "#94a3b8" }}>
+              Yr {yr}
+            </text>
+          ))}
+          {/* Baseline */}
+          <line x1={PL} y1={PT + chartH} x2={W - PR} y2={PT + chartH} stroke="#e2e8f0" strokeWidth={1} />
+
+          {/* Break-even dashed vertical line */}
+          {breakEvenYear > 0 && breakEvenYear <= 20 && (
+            <>
+              <line
+                x1={px(breakEvenYear)} y1={PT}
+                x2={px(breakEvenYear)} y2={PT + chartH}
+                stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 3" />
+              <text x={px(breakEvenYear) + 5} y={PT + 10} style={{ fontSize: 9, fill: "#94a3b8", fontWeight: 600 }}>
+                Break-even
+              </text>
+            </>
+          )}
+
+          {/* Hold period vertical line */}
+          <line
+            x1={px(Y)} y1={PT}
+            x2={px(Y)} y2={PT + chartH}
+            stroke={summaryColor} strokeWidth={2} strokeDasharray="5 3" opacity={0.7} />
+
+          {/* Rent line (filled area) */}
+          <path d={`${rentPath} L${px(20)},${PT + chartH} L${px(1)},${PT + chartH}Z`}
+            fill="#3b82f680" fillOpacity={0.08} />
+          <path d={rentPath} fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Buy line (filled area) */}
+          <path d={`${buyPath} L${px(20)},${PT + chartH} L${px(1)},${PT + chartH}Z`}
+            fill="#059669" fillOpacity={0.06} />
+          <path d={buyPath} fill="none" stroke="#059669" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Hover crosshair */}
+          {hovered !== null && (
+            <>
+              <line x1={tooltipX} y1={PT} x2={tooltipX} y2={PT + chartH}
+                stroke="#cbd5e1" strokeWidth={1} />
+              <circle cx={tooltipX} cy={py(buyYearly[hovered])}  r={4} fill="#059669" />
+              <circle cx={tooltipX} cy={py(rentYearly[hovered])} r={4} fill="#3b82f6" />
+              {/* Tooltip bubble */}
+              <rect x={Math.min(tooltipX + 8, W - 90)} y={PT + 4} width={82} height={40} rx={6}
+                fill="#0f172a" opacity={0.9} />
+              <text x={Math.min(tooltipX + 49, W - 49)} y={PT + 17} textAnchor="middle"
+                style={{ fontSize: 9, fill: "#94a3b8" }}>Year {hovered}</text>
+              <text x={Math.min(tooltipX + 49, W - 49)} y={PT + 28} textAnchor="middle"
+                style={{ fontSize: 9, fill: "#4ade80" }}>Buy {fmt$(buyYearly[hovered])}</text>
+              <text x={Math.min(tooltipX + 49, W - 49)} y={PT + 38} textAnchor="middle"
+                style={{ fontSize: 9, fill: "#93c5fd" }}>Rent {fmt$(rentYearly[hovered])}</text>
+            </>
+          )}
+        </svg>
+
+        {/* Legend */}
+        <div style={{ display: "flex", gap: 20, padding: "4px 12px 8px", justifyContent: "center" }}>
+          {[["#059669", "Buy (cumulative cost)"], ["#3b82f6", "Rent (cumulative cost)"]].map(([col, lbl]) => (
+            <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 24, height: 2.5, background: col, borderRadius: 99 }} />
+              <span style={{ fontSize: 10, color: "#64748b" }}>{lbl}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Cost breakdown table ── */}
+      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", marginBottom: 12 }}>
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", padding: "10px 16px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Over {Y} year{Y !== 1 ? "s" : ""}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 80, textAlign: "right" }}>Buy</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#3b82f6", textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 80, textAlign: "right" }}>Rent</span>
+        </div>
+        {([
+          { label: "Mortgage interest",  buy: Math.round((r.mortgage - (d.price - d.down) / (d.term * 12)) * 12 * Y), rent: 0 },
+          { label: "Property taxes",     buy: d.taxes * 12 * Y,      rent: 0 },
+          { label: "Insurance + HOA",    buy: (d.insurance + d.hoa) * 12 * Y, rent: 0 },
+          { label: "Maintenance",        buy: d.repairs * 12 * Y,    rent: 0 },
+          { label: "Monthly rent paid",  buy: 0,                      rent: Math.round(assume.currentRent > 0 ? assume.currentRent : baseRent) * 12 * Y },
+          { label: "Opportunity cost",   buy: Math.round(d.down * (Math.pow(1 + assume.opportunityCost / 100, Y) - 1)), rent: 0, tip: "What your down payment could earn invested instead" },
+          { label: "Selling costs",      buy: Math.round(d.price * Math.pow(1 + assume.appreciation / 100, Y) * assume.sellingCost / 100), rent: 0 },
+          { label: "Equity gained",      buy: -Math.round(Math.max(0, d.price * Math.pow(1 + assume.appreciation / 100, Y) - (d.price - d.down) - d.price * 0.025)), rent: 0, isGain: true },
+        ] as { label: string; buy: number; rent: number; tip?: string; isGain?: boolean }[]).map((row, i, arr) => {
+          const showBuy  = row.buy  !== 0;
+          const showRent = row.rent !== 0;
+          if (!showBuy && !showRent) return null;
+          return (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", padding: "9px 16px", borderBottom: i < arr.length - 1 ? "1px solid #f1f5f9" : "none", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "#475569", display: "flex", alignItems: "center", gap: 5 }}>
+                {row.label}
+                {row.tip && (
+                  <span title={row.tip} style={{ width: 14, height: 14, borderRadius: "50%", border: "1px solid #cbd5e1", background: "#f8fafc", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#64748b", cursor: "default" }}>?</span>
+                )}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: row.isGain ? "#059669" : "#0f172a", minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                {showBuy ? (row.isGain ? "−" : "") + "$" + Math.abs(row.buy).toLocaleString() : "—"}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                {showRent ? "$" + row.rent.toLocaleString() : "—"}
+              </span>
+            </div>
+          );
+        })}
+        {/* Total row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", padding: "12px 16px", background: "#fff", borderTop: "2px solid #e2e8f0" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Total estimated cost</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: calc.holdBuy < calc.holdRent ? "#059669" : "#0f172a", minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+            ${calc.holdBuy.toLocaleString()}
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: calc.holdRent < calc.holdBuy ? "#3b82f6" : "#0f172a", minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+            ${calc.holdRent.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Advanced assumptions ── */}
+      <button
+        onClick={() => setAdv(v => !v)}
+        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 11, color: "#64748b", padding: 0, display: "flex", alignItems: "center", gap: 6, marginBottom: adv ? 12 : 0, transition: "color 0.15s" }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <polyline points={adv ? "18 15 12 9 6 15" : "6 9 12 15 18 9"} />
+        </svg>
+        Advanced assumptions
+      </button>
+      {adv && (
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px 20px" }}>
+          {([
+            { label: "Monthly rent alternative", key: "currentRent" as const, suffix: "/mo", prefix: "$", step: 50, min: 0, max: 10000, tip: "What you'd pay renting instead" },
+            { label: "Home appreciation", key: "appreciation" as const, suffix: "%/yr", step: 0.5, min: 0, max: 10 },
+            { label: "Annual rent growth", key: "rentGrowth" as const, suffix: "%/yr", step: 0.5, min: 0, max: 10 },
+            { label: "Opportunity cost rate", key: "opportunityCost" as const, suffix: "%/yr", step: 0.5, min: 0, max: 15, tip: "Expected return if down payment was invested" },
+            { label: "Selling costs", key: "sellingCost" as const, suffix: "% of sale", step: 0.5, min: 0, max: 12 },
+          ] as { label: string; key: keyof RvbAssumptions; suffix: string; prefix?: string; step: number; min: number; max: number; tip?: string }[]).map(f => (
+            <div key={f.key}>
+              <label style={{ fontSize: 10, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+                {f.label}
+                {f.tip && <span title={f.tip} style={{ marginLeft: 5, width: 12, height: 12, borderRadius: "50%", border: "1px solid #cbd5e1", background: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#64748b", cursor: "default" }}>?</span>}
+              </label>
+              <div style={{ position: "relative" }}>
+                {f.prefix && <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#94a3b8", pointerEvents: "none" }}>{f.prefix}</span>}
+                <input type="number" step={f.step} min={f.min} max={f.max}
+                  value={assume[f.key]}
+                  onChange={e => upd(f.key)(+e.target.value)}
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    padding: f.prefix ? "6px 10px 6px 20px" : "6px 10px",
+                    border: "1.5px solid #e2e8f0", borderRadius: 8,
+                    fontSize: 12, color: "#0f172a", fontFamily: "inherit",
+                    background: "#fff", outline: "none",
+                    transition: "border-color 0.15s",
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = "#2563eb"; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                />
+              </div>
+              <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 3 }}>{f.suffix}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Disclaimer */}
+      <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 10, lineHeight: 1.5 }}>
+        Estimates based on simplified assumptions. Not financial advice. Actual costs depend on your market, tax situation, and mortgage terms.
+      </p>
+    </div>
+  );
+}
+
 interface InvestorDashboardProps {
   result: AnalysisResult;
   saved: boolean;
@@ -1493,7 +1901,10 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
         </div>
       </div>
 
-      {/* ══ 8. SAVE BUTTON ═════════════════════════════════════════════════════ */}
+      {/* ══ 8. RENT VS BUY ════════════════════════════════════════════════════ */}
+      <RentVsBuyCard d={d} r={r} />
+
+      {/* ══ 9. SAVE BUTTON ═════════════════════════════════════════════════════ */}
       {user ? (
         <button
           onClick={onSave}
@@ -4001,6 +4412,72 @@ const EMPTY_FORM: Record<string, string> = {
   rent: "", vacancy: "5", taxes: "", insurance: "",
   hoa: "0", repairs: "", mgmt: "", other: "0",
 };
+// ─── State-level effective property tax rates (median, as % of home value/yr) ─
+// Source: Tax Foundation / Census ACS median estimates (2023)
+// Format: monthly amount per $100k of purchase price
+const STATE_TAX_RATES: Record<string, { rate: number; label: string }> = {
+  AL: { rate: 0.41, label: "Alabama state avg" },
+  AK: { rate: 1.04, label: "Alaska state avg" },
+  AZ: { rate: 0.62, label: "Arizona state avg" },
+  AR: { rate: 0.61, label: "Arkansas state avg" },
+  CA: { rate: 0.73, label: "California state avg" },
+  CO: { rate: 0.51, label: "Colorado state avg" },
+  CT: { rate: 2.14, label: "Connecticut state avg" },
+  DE: { rate: 0.57, label: "Delaware state avg" },
+  FL: { rate: 0.89, label: "Florida state avg" },
+  GA: { rate: 0.92, label: "Georgia state avg" },
+  HI: { rate: 0.28, label: "Hawaii state avg" },
+  ID: { rate: 0.69, label: "Idaho state avg" },
+  IL: { rate: 2.23, label: "Illinois state avg" },
+  IN: { rate: 0.87, label: "Indiana state avg" },
+  IA: { rate: 1.57, label: "Iowa state avg" },
+  KS: { rate: 1.41, label: "Kansas state avg" },
+  KY: { rate: 0.86, label: "Kentucky state avg" },
+  LA: { rate: 0.55, label: "Louisiana state avg" },
+  ME: { rate: 1.36, label: "Maine state avg" },
+  MD: { rate: 1.07, label: "Maryland state avg" },
+  MA: { rate: 1.23, label: "Massachusetts state avg" },
+  MI: { rate: 1.54, label: "Michigan state avg" },
+  MN: { rate: 1.12, label: "Minnesota state avg" },
+  MS: { rate: 0.65, label: "Mississippi state avg" },
+  MO: { rate: 1.01, label: "Missouri state avg" },
+  MT: { rate: 0.84, label: "Montana state avg" },
+  NE: { rate: 1.73, label: "Nebraska state avg" },
+  NV: { rate: 0.60, label: "Nevada state avg" },
+  NH: { rate: 2.18, label: "New Hampshire state avg" },
+  NJ: { rate: 2.47, label: "New Jersey state avg" },
+  NM: { rate: 0.80, label: "New Mexico state avg" },
+  NY: { rate: 1.72, label: "New York state avg" },
+  NC: { rate: 0.82, label: "North Carolina state avg" },
+  ND: { rate: 0.98, label: "North Dakota state avg" },
+  OH: { rate: 1.59, label: "Ohio state avg" },
+  OK: { rate: 0.90, label: "Oklahoma state avg" },
+  OR: { rate: 0.97, label: "Oregon state avg" },
+  PA: { rate: 1.58, label: "Pennsylvania state avg" },
+  RI: { rate: 1.63, label: "Rhode Island state avg" },
+  SC: { rate: 0.57, label: "South Carolina state avg" },
+  SD: { rate: 1.22, label: "South Dakota state avg" },
+  TN: { rate: 0.71, label: "Tennessee state avg" },
+  TX: { rate: 1.80, label: "Texas state avg" },
+  UT: { rate: 0.63, label: "Utah state avg" },
+  VT: { rate: 1.90, label: "Vermont state avg" },
+  VA: { rate: 0.87, label: "Virginia state avg" },
+  WA: { rate: 0.98, label: "Washington state avg" },
+  WV: { rate: 0.59, label: "West Virginia state avg" },
+  WI: { rate: 1.85, label: "Wisconsin state avg" },
+  WY: { rate: 0.61, label: "Wyoming state avg" },
+};
+const NATIONAL_TAX_RATE = 1.07; // US median effective rate
+
+/** Returns estimated monthly property tax for a given price + state. */
+function estimateMonthlyTax(price: number, stateAbbr: string): { monthly: number; label: string } {
+  const entry = stateAbbr ? STATE_TAX_RATES[stateAbbr] : null;
+  const rate = entry ? entry.rate : NATIONAL_TAX_RATE;
+  const label = entry ? entry.label : "national average";
+  return { monthly: Math.round((price * (rate / 100)) / 12), label };
+}
+
+
 
 function applySmartDefaults(f: Record<string, string>): Record<string, string> {
   const price = pf(f.price);
@@ -4167,6 +4644,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
   const [form, setForm] = useState<Record<string, string>>(EMPTY_FORM);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRentEstimate, setShowRentEstimate] = useState(false);
+  const [autoTax, setAutoTax] = useState(true); // true = use state estimate, false = manual
   const [showComps, setShowComps] = useState(false);
   const [showRentometer, setShowRentometer] = useState(false);
   const [csvError, setCsvError] = useState("");
@@ -4219,7 +4697,14 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
       term: pf(filled.term) || 30,
       rent: pf(filled.rent),
       vacancy: pf(filled.vacancy) || 5,
-      taxes: pf(filled.taxes),
+      taxes: (() => {
+        if (!autoTax) return pf(filled.taxes);
+        const manualVal = pf(filled.taxes);
+        if (manualVal > 0) return manualVal; // user has typed something — respect it
+        const price = pf(filled.price);
+        if (price <= 0) return 0;
+        return estimateMonthlyTax(price, form.state).monthly;
+      })(),
       insurance: pf(filled.insurance),
       hoa: pf(filled.hoa),
       repairs: pf(filled.repairs),
@@ -4623,11 +5108,98 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                     {/* Expenses section */}
                     <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Expenses</p>
 
-                    <SmartField
-                      label="Property Taxes" placeholder="350" prefix="$"
-                      value={form.taxes} onChange={setField("taxes")}
-                      tooltip="Check your county assessor's website — typically 1–2% of price/yr"
-                    />
+                    {/* ── Property Taxes — smart toggle ── */}
+                    {(() => {
+                      const price = pf(form.price);
+                      const stateAbbr = form.state;
+                      const est = price > 0 ? estimateMonthlyTax(price, stateAbbr) : null;
+                      const estVal = est ? est.monthly : 0;
+                      const hasManual = form.taxes !== "" && form.taxes !== "0";
+
+                      return (
+                        <div>
+                          {/* Label row with toggle */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <label className="az-label" style={{ margin: 0 }}>Property Taxes</label>
+                              {/* ? tooltip */}
+                              <div style={{ position: "relative", display: "inline-flex" }}>
+                                <span
+                                  title="Property taxes vary by county and local jurisdiction. This estimate is based on the state average effective rate and is meant to provide a realistic starting point — check your county assessor for the exact amount."
+                                  style={{ width: 15, height: 15, borderRadius: "50%", border: "1px solid #e2e8f0", background: "#f8fafc", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#64748b", cursor: "default" }}>?</span>
+                              </div>
+                            </div>
+
+                            {/* Auto/Manual toggle pill */}
+                            <button
+                              onClick={() => {
+                                const next = !autoTax;
+                                setAutoTax(next);
+                                if (next) {
+                                  // switching TO auto — clear manual if user wants estimate
+                                  // keep their value if they typed something (don't wipe)
+                                }
+                              }}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 5,
+                                background: autoTax ? "rgba(37,99,235,0.08)" : "#f1f5f9",
+                                border: `1px solid ${autoTax ? "rgba(37,99,235,0.25)" : "#e2e8f0"}`,
+                                borderRadius: 99, padding: "2px 8px 2px 4px",
+                                cursor: "pointer", fontFamily: "inherit", transition: "all 0.18s",
+                              }}
+                            >
+                              {/* Toggle dot */}
+                              <span style={{
+                                width: 14, height: 14, borderRadius: "50%",
+                                background: autoTax ? "#2563eb" : "#94a3b8",
+                                display: "block", flexShrink: 0, transition: "background 0.18s",
+                              }} />
+                              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: autoTax ? "#2563eb" : "#64748b", transition: "color 0.18s" }}>
+                                {autoTax ? "Auto" : "Manual"}
+                              </span>
+                            </button>
+                          </div>
+
+                          {/* Input */}
+                          <div style={{ position: "relative" }}>
+                            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#94a3b8", pointerEvents: "none", zIndex: 1 }}>$</span>
+                            <input
+                              type="number"
+                              placeholder={autoTax && estVal > 0 ? String(estVal) : "350"}
+                              value={form.taxes}
+                              onChange={e => {
+                                setField("taxes")(e.target.value);
+                                if (e.target.value) setAutoTax(false); // typing → switch to manual
+                              }}
+                              className="az-input az-input-prefix"
+                              style={{
+                                borderColor: autoTax && !hasManual ? "rgba(37,99,235,0.3)" : undefined,
+                                background: autoTax && !hasManual ? "rgba(37,99,235,0.03)" : undefined,
+                              }}
+                            />
+                          </div>
+
+                          {/* Status line */}
+                          <div style={{ marginTop: 3, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <p style={{ fontSize: 10, color: autoTax && !hasManual ? "#2563eb" : "#94a3b8", margin: 0, fontStyle: autoTax && !hasManual ? "normal" : "normal" }}>
+                              {autoTax && !hasManual && estVal > 0
+                                ? `Estimated from ${est!.label} · $${estVal}/mo`
+                                : autoTax && !hasManual && !estVal
+                                ? "Select a state to auto-estimate"
+                                : "Manual override active"}
+                            </p>
+                            {!autoTax && (
+                              <button
+                                onClick={() => { setAutoTax(true); setField("taxes")(""); }}
+                                style={{ fontSize: 9, color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0, letterSpacing: "0.03em" }}
+                              >
+                                Reset to estimate
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <SmartField
                       label="Insurance" placeholder="120" prefix="$"
                       value={form.insurance} onChange={setField("insurance")}
