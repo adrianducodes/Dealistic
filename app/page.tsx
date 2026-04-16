@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback, Fragment } from "react";
+import React, { useState, useRef, useEffect, useCallback, Fragment } from "react";
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 const LS_SESSION = "dealistic_session";   // { email, name, loginAt }
@@ -67,7 +67,7 @@ interface AnalysisResult {
 }
 interface SavedDeal extends DealInput, DealResult { id: number; saved: boolean; savedAt?: string; userEmail?: string; }
 
-type Page = "landing" | "analyzer" | "dashboard";
+type Page = "landing" | "analyzer" | "dashboard" | "learn";
 type AuthPage = "login" | "signup" | "account";
 type Mode = "manual" | "csv";
 type SortKey = "score" | "cashflow" | "cap" | "coc";
@@ -2371,7 +2371,7 @@ function Marquee() {
 }
 
 // Animated fade-in wrapper (pure CSS, no Framer Motion dependency)
-function FadeIn({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+function FadeIn({ children, delay = 0 }: { children: React.ReactNode; delay?: number; key?: React.Key }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -2973,7 +2973,102 @@ function Step({
 }
 
 
-function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
+// ─── SiteFooter — shared across LandingPage and LearnPage ───────────────────
+function SiteFooter({ onNavigate }: { onNavigate: (p: Page) => void }) {
+  const navLinks: { label: string; action: () => void; external?: boolean }[] = [
+    { label: "Analyzer",  action: () => onNavigate("analyzer") },
+    { label: "Dashboard", action: () => onNavigate("dashboard") },
+    { label: "Learn",     action: () => onNavigate("learn") },
+  ];
+
+  const linkBase: React.CSSProperties = {
+    fontSize: 13, fontWeight: 500, color: "#475569",
+    textDecoration: "none", cursor: "pointer",
+    transition: "color 0.18s ease",
+    background: "none", border: "none", fontFamily: "inherit", padding: 0,
+    position: "relative",
+  };
+
+  return (
+    <footer style={{
+      borderTop: "1px solid #e2e8f0",
+      background: "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(8px)",
+    }}>
+      <div style={{
+        maxWidth: 1100, margin: "0 auto",
+        padding: "clamp(28px,4vw,44px) clamp(16px,4vw,40px)",
+        display: "flex", justifyContent: "space-between",
+        alignItems: "center", flexWrap: "wrap", gap: 24,
+      }}>
+
+        {/* ── Left: brand + credit + copyright ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <button
+            onClick={() => onNavigate("landing")}
+            style={{ ...linkBase, fontSize: 15, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em", textAlign: "left" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+          >
+            Dealistic
+          </button>
+          <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>
+            Built by{" "}
+            <a
+              href="https://www.linkedin.com/in/adriandu2004"
+              target="_blank" rel="noopener noreferrer"
+              style={{ color: "#475569", fontWeight: 600, textDecoration: "none", transition: "color 0.18s" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+            >
+              Adrian Du
+            </a>
+          </p>
+          <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>© 2026 Dealistic. All rights reserved.</p>
+        </div>
+
+        {/* ── Right: nav links + LinkedIn ── */}
+        <nav style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
+          {navLinks.map(link => (
+            <button
+              key={link.label}
+              onClick={link.action}
+              style={linkBase}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2563eb"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+            >
+              {link.label}
+            </button>
+          ))}
+
+          {/* Privacy — plain text, no link */}
+          <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8", cursor: "default" }}>
+            Privacy
+          </span>
+
+          {/* Divider */}
+          <div style={{ width: 1, height: 14, background: "#e2e8f0", flexShrink: 0 }} />
+
+          {/* LinkedIn — external */}
+          <a
+            href="https://www.linkedin.com/in/adriandu2004"
+            target="_blank" rel="noopener noreferrer"
+            style={{ ...linkBase, display: "inline-flex", alignItems: "center", gap: 5 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#0a66c2"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 .774 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+            </svg>
+            LinkedIn
+          </a>
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
+function LandingPage({ onAnalyze, onLearn, onNavigate }: { onAnalyze: () => void; onLearn: () => void; onNavigate: (p: Page) => void }) {
   const [ctaHovered, setCtaHovered] = useState(false);
 
   return (
@@ -3088,7 +3183,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
       <Marquee />
 
       {/* ── STATS ROW ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(40px,6vw,72px) clamp(16px,4vw,40px)" }}>
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(28px,4vw,56px) clamp(16px,4vw,40px)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <StatCard
             label="Instant"
@@ -3118,78 +3213,60 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ── */}
-      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(56px,8vw,96px)" }}>
-
-        {/* Section header */}
+      {/* ── HOW IT WORKS — compact 3-step list ── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,6vw,72px)" }}>
         <FadeIn>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 48 }}>
-            <div>
-              <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 12 }}>How it works</p>
-              <h2 style={{ fontSize: "clamp(26px,3vw,42px)", fontWeight: 800, letterSpacing: "-0.038em", color: C.text, lineHeight: 1.08, margin: 0 }}>
-                From listing to verdict<br />in three steps.
-              </h2>
-            </div>
-            {/* Progression dots */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 4 }}>
-              {["#4a6cf7", C.green, C.amber].map((col, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: col + "18",
-                    border: `2px solid ${col}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: col }}>0{i + 1}</span>
-                  </div>
-                  {i < 2 && <div style={{ width: 20, height: 1.5, background: C.rule }} />}
+          <p style={{ fontSize: 11, letterSpacing: "0.13em", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700, marginBottom: 24, textAlign: "center" }}>How it works</p>
+        </FadeIn>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {([
+            { n: "01", color: C.blue,        icon: "🔗", title: "Paste a link or enter details", desc: "Drop in a Zillow URL, upload a CSV, or fill in a few fields. Smart defaults fill in what you skip." },
+            { n: "02", color: C.accentGreen,  icon: "⚡", title: "Get 12+ metrics instantly",     desc: "Cash flow, cap rate, DSCR, CoC — calculated in real time with a full monthly breakdown." },
+            { n: "03", color: "#ea580c",      icon: "🎯", title: "Read your Dealistic Score",     desc: "Every deal scores 1–100. You see exactly what's working, what to watch, and why." },
+          ] as { n: string; color: string; icon: string; title: string; desc: string }[]).map((step, i) => (
+            <FadeIn key={i} delay={i * 0.08}>
+              <div style={{
+                display: "flex", gap: 20, alignItems: "flex-start", padding: "22px 24px",
+                background: "rgba(255,255,255,0.75)", border: "1px solid rgba(226,232,240,0.8)",
+                borderRadius: 18, backdropFilter: "blur(8px)",
+              }}>
+                {/* Step number */}
+                <div style={{ flexShrink: 0, width: 36, height: 36, borderRadius: 10,
+                  background: step.color + "14", border: `1.5px solid ${step.color}40`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: step.color }}>{step.n}</span>
                 </div>
-              ))}
-            </div>
+                {/* Text */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em", marginBottom: 4 }}>
+                    <span style={{ marginRight: 8 }}>{step.icon}</span>{step.title}
+                  </p>
+                  <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6, margin: 0 }}>{step.desc}</p>
+                </div>
+                {/* Connector line (not last) */}
+              </div>
+              {i < 2 && (
+                <div style={{ width: 1.5, height: 4, background: "rgba(203,213,225,0.7)", marginLeft: 41 }} />
+              )}
+            </FadeIn>
+          ))}
+        </div>
+        <FadeIn delay={0.32}>
+          <div style={{ textAlign: "center", marginTop: 28 }}>
+            <button
+              onClick={onLearn}
+              style={{
+                background: "none", border: "none", color: C.blue, fontSize: 13,
+                fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                textDecoration: "underline", textUnderlineOffset: 3, padding: 0,
+              }}
+            >
+              See detailed walkthrough →
+            </button>
           </div>
         </FadeIn>
-
-        {/* Three step cards — equal height */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, alignItems: "stretch" }}>
-          <Step
-            n="01" stepColor={C.blue} delay={0}
-            title="Enter your property details"
-            desc="Paste a listing link, upload a CSV, or fill in a few numbers. You don't need everything — Dealistic fills in smart defaults for anything you skip."
-            bullets={[
-              "Purchase price + financing terms",
-              "Monthly rent you expect to collect",
-              "Taxes, insurance, HOA, repairs, management",
-              "Paste a Zillow or Redfin URL to auto-fill",
-              "Upload a CSV to analyze dozens at once",
-            ]}
-            visual={<StepVisual01 />}
-          />
-          <Step
-            n="02" stepColor={C.accentGreen} delay={0.12}
-            title="See every metric, instantly"
-            desc="No spreadsheets, no formulas. Dealistic calculates everything in real time and shows you exactly where your money goes each month."
-            bullets={[
-              "Monthly cash flow after all expenses",
-              "Cap rate, cash-on-cash return, NOI",
-              "DSCR — does rent cover the mortgage?",
-              "Stacked breakdown: mortgage vs. tax vs. flow",
-              "Annual projections with vacancy factored in",
-            ]}
-            visual={<StepVisual02 />}
-          />
-          <Step
-            n="03" stepColor={C.accent} delay={0.24}
-            title="Get your deal score"
-            desc="Every deal gets a score from 1–100. Dealistic explains the verdict in plain language — what's working, what to watch, and why."
-            bullets={[
-              "Score from 1–100 with a clear verdict",
-              "Plain-language breakdown of every factor",
-              "Strengths and watchouts called out explicitly",
-              "Save to dashboard or compare side by side",
-            ]}
-            visual={<StepVisual03 />}
-          />
-        </div>
       </section>
-      {/* ── SHOWCASE SECTION ── */}
-      <ShowcaseSection />
-
       {/* ── CTA BLOCK ── */}
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "clamp(56px,8vw,100px) clamp(16px,4vw,40px)" }}>
         <FadeIn>
@@ -3236,42 +3313,7 @@ function LandingPage({ onAnalyze }: { onAnalyze: () => void }) {
         </FadeIn>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer style={{ borderTop: `1px solid ${C.rule}`, padding: "clamp(32px,5vw,56px) clamp(16px,4vw,40px) clamp(28px,4vw,52px)" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 40 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Dealistic</p>
-            <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
-              Built by{" "}
-              <a href="https://www.linkedin.com/in/adriandu2004" target="_blank" rel="noopener noreferrer"
-                style={{ color: C.text, textDecoration: "none", fontWeight: 500, transition: "color 0.15s" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.blue; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.text; }}>
-                Adrian Du
-              </a>
-            </p>
-            <p style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>© 2026 Dealistic. All rights reserved.</p>
-          </div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 36, flexWrap: "wrap" }}>
-            {["Analyzer","Dashboard","Compare","Privacy"].map(l => (
-              <span key={l} style={{ fontSize: 12, color: C.faint, cursor: "pointer", transition: "color 0.15s" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.text; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.faint; }}>
-                {l}
-              </span>
-            ))}
-            <a href="https://www.linkedin.com/in/adriandu2004" target="_blank" rel="noopener noreferrer"
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: C.faint, textDecoration: "none", cursor: "pointer", transition: "color 0.15s" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#0a66c2"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.faint; }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0, opacity: 0.7 }}>
-                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 .774 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-              </svg>
-              LinkedIn
-            </a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter onNavigate={onNavigate} />
     </div>
   );
 }
@@ -3558,7 +3600,7 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel }
   const autoMappedOptional = optionalBucket.filter(h => csvMapping[h] !== "ignore").length;
 
   // MappingRow — shows col name, colType badge, sample values, confidence badge, dropdown
-  function MappingRow({ h }: { h: string }) {
+  function MappingRow({ h }: { h: string; key?: React.Key }) {
     const mapped = csvMapping[h] ?? "ignore";
     const isMapped = mapped !== "ignore";
     const colType = safeColTypes[h] ?? "mixed";
@@ -5555,6 +5597,396 @@ function CompareModal({ deals, onClose }: { deals: SavedDeal[]; onClose: () => v
   );
 }
 
+// ─── LearnPage — product deep dive: inputs, math, score, outputs ──────────────
+function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigate: (p: Page) => void }) {
+
+  // Shared section header style
+  const eyebrow = (label: string, color = "#94a3b8"): React.CSSProperties => ({
+    fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
+    color, fontWeight: 800, marginBottom: 12, display: "block",
+  });
+  const sectionH2: React.CSSProperties = {
+    fontSize: "clamp(22px,2.8vw,34px)", fontWeight: 800,
+    letterSpacing: "-0.035em", color: "#0f172a", lineHeight: 1.15, margin: "0 0 14px",
+  };
+  const prose: React.CSSProperties = {
+    fontSize: 14, color: "#475569", lineHeight: 1.8, margin: 0,
+  };
+  // Divider between major sections
+  const HR = () => (
+    <div style={{ maxWidth: 860, margin: "0 auto clamp(40px,5vw,64px)", padding: "0 clamp(16px,4vw,40px)" }}>
+      <div style={{ height: 1, background: "linear-gradient(90deg, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)" }} />
+    </div>
+  );
+
+  return (
+    <div style={{ background: "#f8fafc", minHeight: "100vh", color: "#0f172a" }}>
+
+      {/* ── HERO ──────────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 760, margin: "0 auto", padding: "clamp(52px,7vw,96px) clamp(16px,4vw,40px) clamp(36px,5vw,56px)", textAlign: "center" }}>
+        <FadeIn>
+          <span style={eyebrow("Understanding Dealistic")}>Understanding Dealistic</span>
+          <h1 style={{ fontSize: "clamp(28px,4.2vw,50px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0f172a", lineHeight: 1.12, margin: "0 auto 20px", maxWidth: 580 }}>
+            How Dealistic evaluates a deal.
+          </h1>
+          <p style={{ ...prose, maxWidth: 520, margin: "0 auto", fontSize: 15, lineHeight: 1.75 }}>
+            A deeper look at the inputs, calculations, and logic that turn raw property numbers into a clear investment verdict.
+          </p>
+        </FadeIn>
+        {/* Page-level nav dots */}
+        <FadeIn delay={0.1}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 36, flexWrap: "wrap" }}>
+            {[["A", "Inputs", "#2563eb"], ["B", "Calculations", "#7c3aed"], ["C", "Score", "#059669"], ["D", "Outputs", "#ea580c"]].map(([letter, label, color]) => (
+              <div key={letter} style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0",
+                borderRadius: 999, padding: "6px 14px 6px 8px",
+                fontSize: 12, color: "#475569", fontWeight: 500,
+              }}>
+                <span style={{ width: 20, height: 20, borderRadius: "50%", background: color + "18", border: `1.5px solid ${color}50`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color }}>
+                  {letter}
+                </span>
+                {label}
+              </div>
+            ))}
+          </div>
+        </FadeIn>
+      </section>
+
+      {/* ── A · INPUTS ────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,5vw,64px)" }}>
+        <FadeIn>
+          <span style={eyebrow("A · Inputs", "#2563eb")}>A · Inputs</span>
+          <h2 style={sectionH2}>What Dealistic needs from you.</h2>
+          <p style={{ ...prose, maxWidth: 620, marginBottom: 32 }}>
+            Dealistic works with whatever you have. You can paste a Zillow or Redfin listing link to auto-fill the address, enter everything manually, or upload a CSV to analyze multiple properties at once. The only truly required field is a purchase price — everything else either auto-fills or falls back to a smart default based on market norms.
+          </p>
+        </FadeIn>
+
+        {/* Input groups */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+          {([
+            {
+              group: "Financing",
+              color: "#2563eb",
+              fields: [
+                { name: "Purchase Price", note: "Required. The agreed or listed sale price." },
+                { name: "Down Payment",   note: "Defaults to 20% — typical for investment properties." },
+                { name: "Interest Rate",  note: "Your mortgage rate. Check Bankrate.com for current rates." },
+                { name: "Loan Term",      note: "Defaults to 30 years. 15-year increases payments but reduces interest." },
+              ],
+            },
+            {
+              group: "Income",
+              color: "#059669",
+              fields: [
+                { name: "Monthly Rent",  note: "Expected gross rent. Leave blank to see cost-only estimates." },
+                { name: "Vacancy Rate",  note: "Defaults to 5% (~3 weeks empty per year). Adjust for your market." },
+              ],
+            },
+            {
+              group: "Expenses",
+              color: "#ea580c",
+              fields: [
+                { name: "Property Taxes", note: "Monthly. Check your county assessor. Defaults ~1.2% of price/yr." },
+                { name: "Insurance",      note: "Landlord insurance. Defaults ~0.65% of price/yr if blank." },
+                { name: "HOA Fees",       note: "Enter 0 if none. Check the MLS listing." },
+                { name: "Repairs",        note: "Defaults to 5% of monthly rent — a common rule of thumb." },
+                { name: "Management",     note: "Self-managing? Enter 0. Managers typically charge 8–10% of rent." },
+              ],
+            },
+          ] as { group: string; color: string; fields: { name: string; note: string }[] }[]).map((g, gi) => (
+            <FadeIn key={gi} delay={gi * 0.06}>
+              <div style={{ background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0", borderRadius: 18, overflow: "hidden" }}>
+                <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: g.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#0f172a", letterSpacing: "0.02em" }}>{g.group}</span>
+                </div>
+                <div style={{ padding: "4px 0" }}>
+                  {g.fields.map((f, fi) => (
+                    <div key={fi} style={{ padding: "11px 18px", borderBottom: fi < g.fields.length - 1 ? "1px solid #f8fafc" : "none" }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 3 }}>{f.name}</p>
+                      <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, margin: 0 }}>{f.note}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FadeIn>
+          ))}
+        </div>
+
+        {/* Import methods */}
+        <FadeIn delay={0.2}>
+          <div style={{ marginTop: 20, background: "linear-gradient(135deg, #eff6ff, #f0fdf4)", border: "1px solid #bfdbfe", borderRadius: 16, padding: "20px 22px", display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 18, flexShrink: 0 }}>💡</div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#1e3a5f", marginBottom: 6 }}>Three ways to start an analysis</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 20px" }}>
+                {["Paste a Zillow or Redfin URL — address auto-fills instantly", "Upload a CSV to analyze dozens of properties at once", "Type numbers manually — defaults fill in what you skip"].map((t, i) => (
+                  <p key={i} style={{ fontSize: 12, color: "#2563eb", margin: 0 }}>→ {t}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        </FadeIn>
+      </section>
+
+      <HR />
+
+      {/* ── B · CALCULATIONS ──────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,5vw,64px)" }}>
+        <FadeIn>
+          <span style={eyebrow("B · Calculations", "#7c3aed")}>B · Calculations</span>
+          <h2 style={sectionH2}>How every number is computed.</h2>
+          <p style={{ ...prose, maxWidth: 620, marginBottom: 36 }}>
+            Every metric is calculated in real time as you type. There are no estimates or averages — each number is derived directly from your inputs using standard real estate formulas. Here's what's happening under the hood.
+          </p>
+        </FadeIn>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {([
+            {
+              metric: "Monthly Cash Flow",
+              color: "#059669",
+              formula: "Effective Rent − (Mortgage + Taxes + Insurance + HOA + Repairs + Management + Other)",
+              what: "The money left over each month after every expense is paid. This is the most direct measure of whether a rental generates income or costs you money.",
+              good: "Most investors target > $200/mo per property. Negative cash flow means you're subsidizing the property out of pocket.",
+              visual: <StepVisual02 />,
+            },
+            {
+              metric: "Cap Rate",
+              color: "#2563eb",
+              formula: "Net Operating Income ÷ Purchase Price × 100",
+              what: "NOI is annual rent minus annual operating expenses — excluding mortgage. Cap rate tells you what return you'd earn if you bought the property all-cash. It's a property-level metric, not affected by your financing.",
+              good: "6%+ is considered solid. Below 4% usually means you're relying on appreciation rather than income.",
+              visual: null,
+            },
+            {
+              metric: "Cash-on-Cash Return (CoC)",
+              color: "#7c3aed",
+              formula: "Annual Cash Flow ÷ Total Cash Invested × 100",
+              what: "This measures the actual return on your out-of-pocket investment — the down payment plus any upfront costs. Unlike cap rate, CoC accounts for your financing, so it reflects your real leverage.",
+              good: "8% or higher is the commonly cited benchmark. If your CoC is low despite a decent cap rate, your financing terms may be the issue.",
+              visual: null,
+            },
+            {
+              metric: "DSCR — Debt Service Coverage Ratio",
+              color: "#ea580c",
+              formula: "Effective Rent ÷ Total Monthly Debt Service",
+              what: "DSCR answers: does the property's income cover the mortgage payment and expenses? A DSCR of 1.0 means rent exactly covers costs. Below 1.0 means it doesn't. Lenders typically require 1.2–1.25 for DSCR loans.",
+              good: "1.25+ is healthy. 1.0–1.25 is breakeven. Below 1.0 is negative carry — high risk.",
+              visual: null,
+            },
+          ] as { metric: string; color: string; formula: string; what: string; good: string; visual: React.ReactNode | null }[]).map((item, i) => (
+            <FadeIn key={i} delay={i * 0.05}>
+              <div style={{ background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0", borderRadius: 18, overflow: "hidden" }}>
+                {/* Header */}
+                <div style={{ padding: "16px 22px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.01em" }}>{item.metric}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: item.visual ? "1fr auto" : "1fr", gap: 0 }}>
+                  <div style={{ padding: "18px 22px" }}>
+                    {/* Formula pill */}
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", marginBottom: 14, display: "inline-block" }}>
+                      <span style={{ fontSize: 11, fontFamily: "monospace", color: "#475569" }}>{item.formula}</span>
+                    </div>
+                    <p style={{ fontSize: 13, color: "#334155", lineHeight: 1.72, marginBottom: 10 }}>{item.what}</p>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: item.color, flexShrink: 0, marginTop: 4 }} />
+                      <p style={{ fontSize: 12, color: item.color, fontWeight: 600, lineHeight: 1.55, margin: 0 }}>{item.good}</p>
+                    </div>
+                  </div>
+                  {item.visual && (
+                    <div style={{ width: 240, flexShrink: 0, borderLeft: "1px solid #f1f5f9", padding: "18px 18px", background: "linear-gradient(160deg,#f0f4ff,#e8f5ef)", display: "flex", alignItems: "center" }}>
+                      {item.visual}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </FadeIn>
+          ))}
+        </div>
+      </section>
+
+      <HR />
+
+      {/* ── C · DEALISTIC SCORE ───────────────────────────────────────────── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,5vw,64px)" }}>
+        <FadeIn>
+          <span style={eyebrow("C · The Dealistic Score", "#059669")}>C · The Dealistic Score</span>
+          <h2 style={sectionH2}>One number that summarizes the whole deal.</h2>
+          <p style={{ ...prose, maxWidth: 620, marginBottom: 32 }}>
+            The Dealistic Score is a composite 1–100 rating calculated from a deal's core financial metrics. It's designed to give you an at-a-glance signal — not a replacement for judgment, but a fast way to compare and prioritize.
+          </p>
+        </FadeIn>
+
+        {/* Score drivers table */}
+        <FadeIn delay={0.06}>
+          <div style={{ background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0", borderRadius: 18, overflow: "hidden", marginBottom: 20 }}>
+            <div style={{ padding: "14px 22px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>What moves the score</span>
+            </div>
+            {([
+              { driver: "Cash-on-Cash Return",  weight: "Primary",   up: "> 10% CoC",   dn: "< 0% CoC",    pts: "±20 pts" },
+              { driver: "Cap Rate",             weight: "Primary",   up: "> 8% cap",    dn: "< 3% cap",    pts: "±15 pts" },
+              { driver: "DSCR",                 weight: "Primary",   up: "> 1.4×",      dn: "< 1.0×",      pts: "±15 pts" },
+              { driver: "Monthly Cash Flow",    weight: "Secondary", up: "> $300/mo",   dn: "< $0/mo",     pts: "±10 pts" },
+              { driver: "State Market Factors", weight: "Modifier",  up: "Landlord-friendly, low tax", dn: "Tenant laws, high insurance", pts: "±8 pts" },
+            ] as { driver: string; weight: string; up: string; dn: string; pts: string }[]).map((row, i, arr) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 80px 1fr 1fr 72px", gap: 0, padding: "12px 22px", borderBottom: i < arr.length - 1 ? "1px solid #f8fafc" : "none", alignItems: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>{row.driver}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase" }}>{row.weight}</span>
+                <span style={{ fontSize: 11, color: "#059669" }}>↑ {row.up}</span>
+                <span style={{ fontSize: 11, color: "#dc2626" }}>↓ {row.dn}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", textAlign: "right" }}>{row.pts}</span>
+              </div>
+            ))}
+          </div>
+        </FadeIn>
+
+        {/* Score tiers */}
+        <FadeIn delay={0.1}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            {([
+              { range: "70 – 100", label: "Great Deal", color: "#059669", bg: "#f0fdf4", border: "#bbf7d0", desc: "Strong cash flow, solid cap rate, healthy DSCR. Worth serious consideration." },
+              { range: "45 – 69",  label: "Average",    color: "#d97706", bg: "#fffbeb", border: "#fde68a", desc: "Meets some thresholds but not all. May work depending on your goals and market." },
+              { range: "1 – 44",   label: "Risky",      color: "#dc2626", bg: "#fff1f2", border: "#fecdd3", desc: "Weak financials. Negative cash flow, low cap rate, or poor DSCR. Proceed cautiously." },
+            ] as { range: string; label: string; color: string; bg: string; border: string; desc: string }[]).map((tier, i) => (
+              <div key={i} style={{ background: tier.bg, border: `1px solid ${tier.border}`, borderRadius: 14, padding: "18px 18px 16px" }}>
+                <p style={{ fontSize: 22, fontWeight: 900, color: tier.color, letterSpacing: "-0.04em", margin: "0 0 4px" }}>{tier.range}</p>
+                <p style={{ fontSize: 12, fontWeight: 800, color: tier.color, margin: "0 0 10px", letterSpacing: "0.02em" }}>{tier.label}</p>
+                <p style={{ fontSize: 11, color: "#475569", lineHeight: 1.6, margin: 0 }}>{tier.desc}</p>
+              </div>
+            ))}
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={0.14}>
+          <div style={{ marginTop: 20, padding: "16px 20px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12 }}>
+            <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.7, margin: 0 }}>
+              <strong style={{ color: "#0f172a" }}>State adjustment:</strong> If you select a U.S. state, Dealistic applies a market modifier of ±8 points based on property tax burden, insurance risk, landlord law friendliness, climate risk, and rental demand — weighted and combined into a single state-level adjustment layered on top of the financial base score.
+            </p>
+          </div>
+        </FadeIn>
+      </section>
+
+      <HR />
+
+      {/* ── D · OUTPUTS & DECISION VALUE ──────────────────────────────────── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(40px,5vw,64px)" }}>
+        <FadeIn>
+          <span style={eyebrow("D · Outputs", "#ea580c")}>D · Outputs</span>
+          <h2 style={sectionH2}>What you actually learn from an analysis.</h2>
+          <p style={{ ...prose, maxWidth: 620, marginBottom: 32 }}>
+            The results panel is organized to answer three questions in order: <em>Is this deal profitable?</em> — <em>What are the biggest risks?</em> — <em>How can the numbers improve?</em>
+          </p>
+        </FadeIn>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {([
+            {
+              label: "Key Metrics Dashboard",
+              color: "#ea580c",
+              items: [
+                "Monthly and annual cash flow after all expenses",
+                "Cap rate, CoC return, DSCR — each with a benchmark label (excellent / average / below target)",
+                "Score breakdown: base financial score + state adjustment + final score",
+              ],
+            },
+            {
+              label: "AI Investment Insight",
+              color: "#2563eb",
+              items: [
+                "A 3–4 sentence narrative synthesizing cash flow, DSCR, leverage, and rent-to-price ratio",
+                "Calls out specific numbers — not generic advice",
+                "Includes a state clause when a state is selected",
+              ],
+            },
+            {
+              label: "Score Drivers",
+              color: "#7c3aed",
+              items: [
+                "Shows which 3–5 factors are most responsible for the score — positive or negative",
+                "Each driver shows the point impact (e.g. +20 pts for CoC > 10%)",
+                "Sorted by absolute impact so the most important factors surface first",
+              ],
+            },
+            {
+              label: "Optimization Suggestions",
+              color: "#059669",
+              items: [
+                "3 concrete changes that would raise the score — with specific numbers",
+                "Examples: raise rent 10%, negotiate price down 5%, adjust down payment",
+                "Each suggestion shows the expected point improvement",
+              ],
+            },
+            {
+              label: "Monthly Breakdown",
+              color: "#ea580c",
+              items: [
+                "Line-by-line: gross rent → vacancy loss → effective rent",
+                "Line-by-line: mortgage → taxes → insurance → repairs → management → other → total",
+                "Net cash flow per month — color-coded green or red",
+              ],
+            },
+          ] as { label: string; color: string; items: string[] }[]).map((block, i) => (
+            <FadeIn key={i} delay={i * 0.05}>
+              <div style={{ background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0", borderRadius: 16, padding: "18px 22px", display: "flex", gap: 16, alignItems: "flex-start" }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: block.color, flexShrink: 0, marginTop: 4 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 10, letterSpacing: "-0.01em" }}>{block.label}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {block.items.map((item, j) => (
+                      <p key={j} style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.6, margin: 0, paddingLeft: 12, borderLeft: `2px solid ${block.color}30` }}>
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </FadeIn>
+          ))}
+        </div>
+      </section>
+
+      <HR />
+
+      {/* ── CTA ───────────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 760, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(52px,7vw,88px)" }}>
+        <FadeIn>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <h2 style={{ fontSize: "clamp(22px,3vw,36px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0f172a", margin: "0 0 12px" }}>
+              See it in action.
+            </h2>
+            <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.7, margin: "0 0 24px" }}>
+              The best way to understand Dealistic is to run a real deal through it. It takes about 30 seconds.
+            </p>
+            <button
+              onClick={onAnalyze}
+              style={{
+                padding: "14px 36px", border: "none", borderRadius: 999,
+                background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+                color: "#fff", fontSize: 15, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+                transition: "transform 0.18s, box-shadow 0.18s",
+                boxShadow: "0 4px 16px rgba(37,99,235,0.3)",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(37,99,235,0.38)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "none"; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 16px rgba(37,99,235,0.3)"; }}
+            >
+              Analyze a Deal →
+            </button>
+            <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 12 }}>Free to use. No account required.</p>
+          </div>
+        </FadeIn>
+      </section>
+
+      <SiteFooter onNavigate={onNavigate} />
+    </div>
+  );
+}
+
 // ─── Auth Pages ───────────────────────────────────────────────────────────────
 
 // Shared field for auth forms
@@ -5952,7 +6384,7 @@ export default function Dealistic() {
   }
 
   return (
-    <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", background: `linear-gradient(160deg, ${C.gradStart} 0%, ${C.bg} 40%, ${C.gradEnd} 100%)`, minHeight: "100vh", overflowX: "hidden", width: "100%", backgroundAttachment: "fixed" }}>
+    <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", background: "#f8fafc", minHeight: "100vh", overflowX: "hidden", width: "100%" }}>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { max-width: 100%; overflow-x: hidden; }
@@ -6192,7 +6624,7 @@ export default function Dealistic() {
             </button>
           </div>
           <nav style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"]] as [Page, string][]).map(([p, label]) => (
+            {([["landing", "Home"], ["analyzer", "Analyzer"], ["dashboard", "Dashboard"], ["learn", "Learn"]] as [Page, string][]).map(([p, label]) => (
               <button
                 key={p}
                 onClick={() => navigate(p)}
@@ -6236,7 +6668,8 @@ export default function Dealistic() {
       {/* Main app pages */}
       {!authPage && (
         <div>
-          {page === "landing" && <LandingPage onAnalyze={() => navigate("analyzer")} />}
+          {page === "landing" && <LandingPage onAnalyze={() => navigate("analyzer")} onLearn={() => navigate("learn")} onNavigate={navigate} />}
+          {page === "learn" && <LearnPage onAnalyze={() => navigate("analyzer")} onNavigate={navigate} />}
           {page === "analyzer" && <AnalyzerPage onSave={addDeal} prefill={null} user={user} onOpenLogin={() => openAuth("login")} />}
           {page === "dashboard" && (
             <DashboardPage
