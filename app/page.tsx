@@ -4493,18 +4493,16 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
 
         {/* ── Manual Mode ── */}
         {mode === "manual" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "clamp(16px,2.5vw,32px)", alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 560px), 1fr))", gap: "clamp(16px,2.5vw,32px)", alignItems: "start" }}>
 
             {/* Form column */}
             <div>
-              {/* Property Details */}
-              <div className="az-card" style={{ marginBottom: 20 }}>
-                <SectionLabel text="Property Details" />
-                {/* Address + State row */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
-                  <label className="az-label">
-                    Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
-                  </label>
+              {/* ── Single unified form card ── */}
+              <div className="az-card">
+
+                {/* Address + State row — full width */}
+                <div style={{ marginBottom: 14 }}>
+                  <label className="az-label">Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span></label>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
                       type="text"
@@ -4518,7 +4516,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                       value={form.state}
                       onChange={e => setField("state")(e.target.value)}
                       className="az-select"
-                      style={{ width: 100, flexShrink: 0 }}
+                      style={{ width: 90, flexShrink: 0 }}
                     >
                       <option value="">State</option>
                       {US_STATES.map(s => (
@@ -4526,190 +4524,161 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                       ))}
                     </select>
                   </div>
-                  <p className="az-hint">Used to label your saved deal. Selecting a state unlocks a market overview.</p>
                 </div>
-                {/* State summary card — appears when state is selected */}
+
+                {/* State summary card */}
                 <StateSummaryCard stateAbbr={form.state} />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
-                  {/* Purchase Price — has ref for URL autofill focus */}
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+
+                {/* Thin rule */}
+                <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0 16px" }} />
+
+                {/* 2-column grid: Financing (left) + Income & Expenses (right) */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: "20px 20px" }}>
+
+                  {/* ── Left: Financing ── */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Financing</p>
+
+                    {/* Purchase Price */}
+                    <div>
                       <label className="az-label">Purchase Price</label>
+                      <div style={{ position: "relative" }}>
+                        <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: C.faint, pointerEvents: "none" }}>$</span>
+                        <input
+                          ref={priceInputRef}
+                          type="number"
+                          placeholder="325,000"
+                          value={form.price}
+                          onChange={e => setField("price")(e.target.value)}
+                          className="az-input az-input-prefix"
+                          style={{ border: highlightFields.has("price") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("price") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
+                        />
+                      </div>
                     </div>
-                    <div style={{ position: "relative" }}>
-                      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: C.faint, pointerEvents: "none" }}>$</span>
-                      <input
-                        ref={priceInputRef}
-                        type="number"
-                        placeholder="325,000"
-                        value={form.price}
-                        onChange={e => setField("price")(e.target.value)}
-                        className="az-input az-input-prefix"
-                        style={{ border: highlightFields.has("price") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("price") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
-                      />
-                    </div>
-                    <p className="az-hint">The agreed sale price — find it on Zillow or your MLS listing.</p>
+
+                    <SmartField
+                      label="Down Payment" placeholder="65,000" prefix="$"
+                      value={form.down} onChange={setField("down")}
+                      tooltip="Usually 20–25% of purchase price for rentals"
+                    />
+                    <SmartField
+                      label="Interest Rate" placeholder="7.25" suffix="%"
+                      value={form.rate} onChange={setField("rate")}
+                      tooltip="Check Bankrate.com for today's investment rates"
+                    />
+                    <SmartField
+                      label="Loan Term (yrs)" placeholder="30"
+                      value={form.term} onChange={setField("term")}
+                      tooltip="30 years is standard. 15 years = higher payments, less total interest"
+                    />
                   </div>
-                  <SmartField
-                    label="Down Payment" placeholder="65,000" prefix="$"
-                    value={form.down} onChange={setField("down")}
-                    hint="Typically 20–25% for investment properties."
-                    tooltip="Usually 20–25% of purchase price for rentals"
-                  />
-                  <SmartField
-                    label="Interest Rate" placeholder="7.25" suffix="%"
-                    value={form.rate} onChange={setField("rate")}
-                    hint="Check current rates at Bankrate.com or ask your lender."
-                    tooltip="Check Bankrate.com for today's investment rates"
-                  />
-                  <SmartField
-                    label="Loan Term (yrs)" placeholder="30"
-                    value={form.term} onChange={setField("term")}
-                    hint="30 years is standard. 15 years = higher payments, less interest."
-                  />
-                </div>
-              </div>
 
-              {/* Income — investor mode only */}
-              {!isBuyer && <div className="az-card" style={{ marginBottom: 20 }}>
-                <SectionLabel text="Rental Income" />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
+                  {/* ── Right: Income + Expenses ── */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
-                  {/* Rent field — custom, not SmartField, so we can attach a ref and the estimator */}
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <label className="az-label">
-                        Monthly Rent <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
-                      </label>
-                      {priceVal > 0 && (
-                        <button
-                          onClick={() => setShowRentEstimate(v => !v)}
-                          className="az-btn-ghost"
-                          style={{ fontSize: 10 }}
-                        >
-                          {showRentEstimate ? "Hide" : "Estimate Rent"}
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ position: "relative" }}>
-                      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: C.faint, pointerEvents: "none" }}>$</span>
-                      <input
-                        ref={rentInputRef}
-                        type="number"
-                        placeholder="2,400"
-                        value={form.rent}
-                        onChange={e => setField("rent")(e.target.value)}
-                        className="az-input az-input-prefix"
-                        style={{ border: highlightFields.has("rent") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("rent") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
-                      />
-                    </div>
-                    <p className="az-hint">Leave blank to see mortgage &amp; cost estimates only.</p>
-                    {/* Rent estimator — rendered as a component, not an IIFE */}
-                    {showRentEstimate && priceVal > 0 && (
-                      <RentEstimatorPanel price={priceVal} onSelect={handleRentEstimate} />
+                    {/* Income section */}
+                    {!isBuyer && (
+                      <>
+                        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Income</p>
+
+                        {/* Monthly Rent */}
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <label className="az-label" style={{ margin: 0 }}>Monthly Rent <span style={{ color: "#94a3b8", fontWeight: 400 }}>(opt.)</span></label>
+                            {priceVal > 0 && (
+                              <button onClick={() => setShowRentEstimate(v => !v)} className="az-btn-ghost" style={{ fontSize: 9, padding: "2px 8px" }}>
+                                {showRentEstimate ? "Hide" : "Estimate"}
+                              </button>
+                            )}
+                          </div>
+                          <div style={{ position: "relative" }}>
+                            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: C.faint, pointerEvents: "none" }}>$</span>
+                            <input
+                              ref={rentInputRef}
+                              type="number"
+                              placeholder="2,400"
+                              value={form.rent}
+                              onChange={e => setField("rent")(e.target.value)}
+                              className="az-input az-input-prefix"
+                              style={{ border: highlightFields.has("rent") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("rent") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
+                            />
+                          </div>
+                          {showRentEstimate && priceVal > 0 && (
+                            <RentEstimatorPanel price={priceVal} onSelect={handleRentEstimate} />
+                          )}
+                        </div>
+
+                        <SmartField
+                          label="Vacancy Rate" placeholder="5" suffix="%"
+                          value={form.vacancy} onChange={setField("vacancy")}
+                          autoLabel="5%"
+                          tooltip="5–8% is typical for most rental markets"
+                        />
+
+                        {/* Thin rule between Income and Expenses */}
+                        <div style={{ height: 1, background: "#f1f5f9", margin: "2px 0" }} />
+                      </>
                     )}
+
+                    {/* Expenses section */}
+                    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Expenses</p>
+
+                    <SmartField
+                      label="Property Taxes" placeholder="350" prefix="$"
+                      value={form.taxes} onChange={setField("taxes")}
+                      tooltip="Check your county assessor's website — typically 1–2% of price/yr"
+                    />
+                    <SmartField
+                      label="Insurance" placeholder="120" prefix="$"
+                      value={form.insurance} onChange={setField("insurance")}
+                      autoLabel="Auto"
+                      tooltip="We estimate ~0.65% of price/year if left blank"
+                    />
+                    <SmartField
+                      label="HOA Fees" placeholder="0" prefix="$"
+                      value={form.hoa} onChange={setField("hoa")}
+                      tooltip="Listed in the MLS or ask the seller's agent. Enter 0 if none."
+                    />
+                    {!isBuyer && (
+                      <>
+                        <SmartField
+                          label="Repairs & Maint." placeholder="150" prefix="$"
+                          value={form.repairs} onChange={setField("repairs")}
+                          autoLabel="5%"
+                          tooltip="Rule of thumb: ~5% of monthly rent"
+                        />
+                        <SmartField
+                          label="Property Mgmt." placeholder="200" prefix="$"
+                          value={form.mgmt} onChange={setField("mgmt")}
+                          autoLabel="8%"
+                          tooltip="Typically 8–10% of monthly rent. Enter 0 if self-managing."
+                        />
+                      </>
+                    )}
+                    <SmartField
+                      label="Other Costs" placeholder="50" prefix="$"
+                      value={form.other} onChange={setField("other")}
+                      tooltip={isBuyer ? "HOA, lawn care, utilities you pay as owner" : "Utilities, lawn, pest control you pay as landlord"}
+                    />
                   </div>
-
-                  <SmartField
-                    label="Vacancy Rate" placeholder="5" suffix="%"
-                    value={form.vacancy} onChange={setField("vacancy")}
-                    autoLabel="Default 5%"
-                    hint="Months the unit sits empty per year. 5% ≈ 3 weeks. Most markets: 5–10%."
-                    tooltip="5–8% is typical for most rental markets"
-                  />
                 </div>
 
-                {/* Rental Comps toggle */}
-                <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <button
-                    onClick={() => setShowComps(v => !v)}
-                    className="az-btn-ghost"
-                  >
-                    {showComps ? "Hide Rental Comps" : "Add Rental Comps"}
-                  </button>
-                  {!showComps && (
-                    <p style={{ fontSize: 11, color: C.faint, fontStyle: "italic" }}>
-                      Compare similar nearby units to validate rent
-                    </p>
-                  )}
-                </div>
-                {showComps && <RentalCompsSection onUseAverage={handleUseAverage} />}
+                {/* Rental tools — below the grid */}
+                {!isBuyer && (
+                  <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
+                    <button onClick={() => setShowComps(v => !v)} className="az-btn-ghost">
+                      {showComps ? "Hide Comps" : "Rental Comps"}
+                    </button>
+                    <button onClick={() => setShowRentometer(v => !v)} className="az-btn-ghost">
+                      {showRentometer ? "Hide Rentometer" : "Rentometer"}
+                    </button>
+                    <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }}>Smart defaults apply to blank fields</span>
+                  </div>
+                )}
+                {showComps && <div style={{ marginTop: 12 }}><RentalCompsSection onUseAverage={handleUseAverage} /></div>}
+                {showRentometer && <div style={{ marginTop: 12 }}><RentometerSection address={form.address} /></div>}
 
-                {/* Rentometer reference toggle */}
-                <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <button
-                    onClick={() => setShowRentometer(v => !v)}
-                    className="az-btn-ghost"
-                  >
-                    {showRentometer ? "Hide Rentometer" : "Look Up on Rentometer"}
-                  </button>
-                  {!showRentometer && (
-                    <p style={{ fontSize: 11, color: C.faint, fontStyle: "italic" }}>
-                      Real market rent data by zip code
-                    </p>
-                  )}
-                </div>
-                {showRentometer && <RentometerSection address={form.address} />}
-              </div>}
-
-              {/* Expenses */}
-              <div className="az-card">
-                <SectionLabel text="Monthly Expenses" />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
-                  <SmartField
-                    label="Property Taxes" placeholder="350" prefix="$"
-                    value={form.taxes} onChange={setField("taxes")}
-                    hint="Typically 1–2% of price/year. Check your county assessor's site."
-                    tooltip="Check your county assessor's website"
-                  />
-                  <SmartField
-                    label="Insurance" placeholder="120" prefix="$"
-                    value={form.insurance} onChange={setField("insurance")}
-                    autoLabel="Auto-estimate"
-                    hint="Landlord insurance ≈ 0.65% of price/year. We estimate if left blank."
-                    tooltip="We estimate ~0.65% of price/year if left blank"
-                  />
-                  <SmartField
-                    label="HOA Fees" placeholder="0" prefix="$"
-                    value={form.hoa} onChange={setField("hoa")}
-                    hint="Check the listing or ask the agent. Enter 0 if none."
-                    tooltip="Listed in the MLS or ask the seller's agent"
-                  />
-                  {!isBuyer && <>
-                  <SmartField
-                    label="Repairs & Maintenance" placeholder="150" prefix="$"
-                    value={form.repairs} onChange={setField("repairs")}
-                    autoLabel="Default 5% rent"
-                    hint="Budget ~5% of rent/mo. We fill this if left blank."
-                    tooltip="Rule of thumb: 5% of monthly rent"
-                  />
-                  <SmartField
-                    label="Property Management" placeholder="200" prefix="$"
-                    value={form.mgmt} onChange={setField("mgmt")}
-                    autoLabel="Default 8% rent"
-                    hint="Self-managing? Enter 0. Managers typically charge 8–10% of rent."
-                    tooltip="Typically 8–10% of monthly rent"
-                  />
-                  </>}
-                  <SmartField
-                    label="Other Monthly Costs" placeholder="50" prefix="$"
-                    value={form.other} onChange={setField("other")}
-                    hint={isBuyer ? "HOA, lawn care, utilities you pay as the owner." : "Utilities, lawn care, pest control, etc. you pay as landlord."}
-                  />
-                </div>
-
-                {/* TIP callout */}
-                <div className="az-tip">
-                  <span style={{ fontSize: 9, background: "#2563eb", color: "#fff", padding: "2px 8px", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", borderRadius: 4, flexShrink: 0, marginTop: 1 }}>TIP</span>
-                  <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
-                    Leave <strong style={{ color: "#0f172a", fontWeight: 600 }}>Repairs</strong>, <strong style={{ color: "#0f172a", fontWeight: 600 }}>Management</strong>, and <strong style={{ color: "#0f172a", fontWeight: 600 }}>Insurance</strong> blank — we apply smart defaults automatically.
-                  </p>
-                </div>
-
-                <button
-                  onClick={analyze}
-                  className="az-btn-primary"
-                >
+                <button onClick={analyze} className="az-btn-primary">
                   {isBuyer ? "Calculate My Costs" : "Analyze This Deal"}
                 </button>
               </div>
@@ -6855,10 +6824,10 @@ export default function Dealistic() {
           width: 100%;
           background: #fff;
           border: 1.5px solid #e2e8f0;
-          border-radius: 12px;
+          border-radius: 10px;
           color: #0f172a;
-          font-size: 14px;
-          padding: 12px 14px;
+          font-size: 12px;
+          padding: 8px 12px;
           outline: none;
           font-family: inherit;
           box-sizing: border-box;
@@ -6872,7 +6841,7 @@ export default function Dealistic() {
         }
         .az-input:hover:not(:focus) { border-color: #cbd5e1; }
 
-        .az-input-prefix { padding-left: 34px; }
+        .az-input-prefix { padding-left: 30px; }
         .az-input-suffix { padding-right: 38px; }
 
         .az-select {
@@ -6882,7 +6851,7 @@ export default function Dealistic() {
           border-radius: 12px;
           color: #0f172a;
           font-size: 13px;
-          padding: 12px 36px 12px 14px;
+          padding: 8px 32px 8px 12px;
           outline: none;
           font-family: inherit;
           cursor: pointer;
@@ -6899,19 +6868,19 @@ export default function Dealistic() {
         .az-card {
           background: rgba(255,255,255,0.92);
           border: 1px solid rgba(226,232,240,0.8);
-          border-radius: 20px;
-          padding: 28px;
+          border-radius: 18px;
+          padding: 20px 22px;
           box-shadow: 0 1px 3px rgba(15,23,42,0.04), 0 4px 16px rgba(15,23,42,0.04);
           transition: box-shadow 0.2s;
         }
 
         .az-section-label {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
-          color: #64748b;
-          margin-bottom: 18px;
+          color: #94a3b8;
+          margin-bottom: 14px;
           display: flex;
           align-items: center;
           gap: 8px;
@@ -6924,18 +6893,19 @@ export default function Dealistic() {
         }
 
         .az-label {
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 600;
           color: #374151;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
           display: block;
+          letter-spacing: 0.01em;
         }
 
         .az-hint {
-          font-size: 11px;
+          font-size: 10px;
           color: #94a3b8;
-          margin-top: 5px;
-          line-height: 1.5;
+          margin-top: 3px;
+          line-height: 1.4;
         }
 
         .az-btn-primary {
@@ -6960,6 +6930,12 @@ export default function Dealistic() {
           box-shadow: 0 6px 20px rgba(37,99,235,0.38);
         }
         .az-btn-primary:active { transform: translateY(0); }
+
+        @media (max-width: 500px) {
+          .az-card { padding: 16px; }
+          .az-btn-primary { margin-top: 18px; }
+          .az-input, .az-select { font-size: 16px; } /* prevent iOS zoom on focus */
+        }
 
         .az-btn-ghost {
           font-size: 11px;
