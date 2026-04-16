@@ -206,9 +206,11 @@ interface DealResult {
   cashflow: number; annualCashflow: number; coc: number; capRate: number;
   dscr: number;
   // scoring
-  baseScore: number;       // raw financial score (pre-state)
+  baseScore: number;       // raw financial score (pre-location)
   stateAdj: number;        // state adjustment (–8 to +8)
   stateAdjLabel: string;   // e.g. "Texas taxes & insurance risk"
+  crimeAdj: number;        // crime/safety adjustment (–5 to +5)
+  crimeNote: string;       // label shown in UI
   score: number;           // final clamped score
   label: "Great Deal" | "Average" | "Risky";
   reason: string;
@@ -311,8 +313,119 @@ function calcStateAdj(stateAbbr: string): { adj: number; label: string } {
   return { adj: Math.max(-8, Math.min(8, adj)), label: s.label };
 }
 
-// ─── Calculations ─────────────────────────────────────────────────────────────
-function calcDeal(d: DealInput, stateAbbr = ""): DealResult {
+// ─── Crime / Safety location factor ──────────────────────────────────────────
+// Adjustment range: –5 (high crime) to +5 (very safe).
+// Data source: state-level FBI UCR / BJS violent crime rate estimates.
+// Granularity: state-level only — no city/zip precision yet.
+// To upgrade: swap calcCrimeAdj() to call a city-level API (e.g. SpotCrime,
+//   NeighborhoodScout, or the FBI Crime Data Explorer API) and pass address.
+//
+// Scale: violent crimes per 100k residents (national avg ~380).
+//   <200 → +5   (very safe)   200–300 → +3   (safe)
+//   300–400 → +1 (avg)        400–500 → –2   (elevated)
+//   >500 → –5   (high risk)
+//
+// These are rounded state medians — real neighborhood data varies widely.
+// All values labeled "estimate" in UI until live API connected.
+const CRIME_STATE_RATES: Record<string, { vcPer100k: number; tier: "very safe" | "safe" | "average" | "elevated" | "high" }> = {
+  ME: { vcPer100k: 109, tier: "very safe"  },
+  NH: { vcPer100k: 146, tier: "very safe"  },
+  VT: { vcPer100k: 148, tier: "very safe"  },
+  CT: { vcPer100k: 181, tier: "very safe"  },
+  ID: { vcPer100k: 228, tier: "safe"       },
+  UT: { vcPer100k: 239, tier: "safe"       },
+  WY: { vcPer100k: 240, tier: "safe"       },
+  MA: { vcPer100k: 298, tier: "safe"       },
+  HI: { vcPer100k: 301, tier: "average"    },
+  ND: { vcPer100k: 318, tier: "average"    },
+  WI: { vcPer100k: 305, tier: "average"    },
+  MN: { vcPer100k: 288, tier: "safe"       },
+  IA: { vcPer100k: 270, tier: "safe"       },
+  NJ: { vcPer100k: 194, tier: "very safe"  },
+  NY: { vcPer100k: 349, tier: "average"    },
+  VA: { vcPer100k: 197, tier: "very safe"  },
+  SD: { vcPer100k: 440, tier: "elevated"   },
+  CO: { vcPer100k: 397, tier: "average"    },
+  OR: { vcPer100k: 284, tier: "safe"       },
+  WA: { vcPer100k: 350, tier: "average"    },
+  NC: { vcPer100k: 349, tier: "average"    },
+  DE: { vcPer100k: 445, tier: "elevated"   },
+  PA: { vcPer100k: 306, tier: "average"    },
+  FL: { vcPer100k: 396, tier: "average"    },
+  TX: { vcPer100k: 446, tier: "elevated"   },
+  GA: { vcPer100k: 395, tier: "average"    },
+  IN: { vcPer100k: 394, tier: "average"    },
+  OH: { vcPer100k: 301, tier: "average"    },
+  MI: { vcPer100k: 438, tier: "elevated"   },
+  IL: { vcPer100k: 440, tier: "elevated"   },
+  TN: { vcPer100k: 609, tier: "high"       },
+  SC: { vcPer100k: 478, tier: "elevated"   },
+  MD: { vcPer100k: 468, tier: "elevated"   },
+  LA: { vcPer100k: 548, tier: "high"       },
+  AR: { vcPer100k: 554, tier: "high"       },
+  MO: { vcPer100k: 495, tier: "elevated"   },
+  OK: { vcPer100k: 445, tier: "elevated"   },
+  KS: { vcPer100k: 408, tier: "elevated"   },
+  NV: { vcPer100k: 494, tier: "elevated"   },
+  AZ: { vcPer100k: 450, tier: "elevated"   },
+  AL: { vcPer100k: 523, tier: "high"       },
+  MS: { vcPer100k: 271, tier: "safe"       },
+  KY: { vcPer100k: 234, tier: "safe"       },
+  WV: { vcPer100k: 325, tier: "average"    },
+  MT: { vcPer100k: 429, tier: "elevated"   },
+  AK: { vcPer100k: 838, tier: "high"       },
+  NM: { vcPer100k: 808, tier: "high"       },
+  CA: { vcPer100k: 499, tier: "elevated"   },
+  RI: { vcPer100k: 234, tier: "safe"       },
+  NE: { vcPer100k: 300, tier: "average"    },
+};
+
+// Returns a score modifier –5 to +5 and a display note.
+// zip: 5-digit ZIP code (used for future API lookup — not yet connected).
+// stateAbbr: fallback when ZIP not provided.
+// To upgrade to real ZIP-level data:
+//   const res = await fetch(`/api/safety?zip=${zip}`);
+//   const { crimeIndex } = await res.json();
+//   map crimeIndex → adj + tier
+function calcCrimeAdj(stateAbbr: string, zip = ""): { adj: number; note: string; tier: string } {
+  // ── Future: ZIP-level API hook ──────────────────────────────────────────
+  // When a real crime API is connected, resolve ZIP → crimeIndex here.
+  // For now, ZIP presence lets us signal "more precise data is possible"
+  // but we still fall back to state-level estimates.
+  const hasZip = /^\d{5}$/.test(zip.trim());
+  const entry = stateAbbr ? CRIME_STATE_RATES[stateAbbr] : null;
+
+  if (!entry && !hasZip) {
+    return { adj: 0, note: "No location data — add state or ZIP for estimate", tier: "unknown" };
+  }
+  if (!entry) {
+    // ZIP entered but no state matched — neutral, note ZIP is ready for API
+    return { adj: 0, note: `ZIP ${zip} entered — state-level data unavailable`, tier: "unknown" };
+  }
+
+  const { vcPer100k, tier } = entry;
+  let adj = 0;
+  if      (vcPer100k < 200) adj = +5;
+  else if (vcPer100k < 300) adj = +3;
+  else if (vcPer100k < 400) adj = +1;
+  else if (vcPer100k < 500) adj = -2;
+  else                       adj = -5;
+
+  const tierLabel: Record<string, string> = {
+    "very safe": "very low crime state",
+    "safe":      "below-avg crime state",
+    "average":   "avg crime rate",
+    "elevated":  "above-avg crime rate",
+    "high":      "high crime rate",
+    "unknown":   "no data",
+  };
+  const source = hasZip ? `ZIP ${zip} — state estimate` : "state estimate";
+  const note = `${tierLabel[tier]} (~${vcPer100k} violent crimes/100k — ${source})`;
+  return { adj, note, tier };
+}
+
+
+function calcDeal(d: DealInput, stateAbbr = "", zip = ""): DealResult {
   const loan = d.price - d.down;
   const mr = d.rate / 100 / 12;
   const n = d.term * 12;
@@ -339,7 +452,11 @@ function calcDeal(d: DealInput, stateAbbr = ""): DealResult {
 
   // State modifier: –8 to +8 pts (~15–20% influence on a typical deal)
   const { adj: stateAdj, label: stateAdjLabel } = calcStateAdj(stateAbbr);
-  const score = Math.max(1, Math.min(100, baseScore + stateAdj));
+
+  // Crime/safety modifier: –5 to +5 pts (~8–10% influence)
+  const { adj: crimeAdj, note: crimeNote } = calcCrimeAdj(stateAbbr, zip);
+
+  const score = Math.max(1, Math.min(100, baseScore + stateAdj + crimeAdj));
 
   const label: "Great Deal" | "Average" | "Risky" = score >= 70 ? "Great Deal" : score >= 45 ? "Average" : "Risky";
 
@@ -360,7 +477,7 @@ function calcDeal(d: DealInput, stateAbbr = ""): DealResult {
 
   const reason = financeVerdict + stateClause;
 
-  return { mortgage, effectiveRent, opEx, totalMonthly, cashflow, annualCashflow, coc, capRate, dscr, baseScore, stateAdj, stateAdjLabel, score, label, reason };
+  return { mortgage, effectiveRent, opEx, totalMonthly, cashflow, annualCashflow, coc, capRate, dscr, baseScore, stateAdj, stateAdjLabel, crimeAdj, crimeNote, score, label, reason };
 }
 
 function fmt(n: number): string {
@@ -439,9 +556,13 @@ function StateSelect({
   const [open, setOpen]     = useState(false);
   const [search, setSearch] = useState("");
   const [rect, setRect]     = useState<{ top: number; left: number; w: number } | null>(null);
-  const triggerRef  = useRef<HTMLDivElement>(null);
-  const listRef     = useRef<HTMLDivElement>(null);
-  const searchRef   = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef   = useRef<HTMLDivElement>(null);
+  const listRef    = useRef<HTMLDivElement>(null);
+  const searchRef  = useRef<HTMLInputElement>(null);
+  // Track whether a pointerdown landed inside our panel or trigger — 
+  // if so, the subsequent outside-click check must not close us.
+  const pointerInsideRef = useRef(false);
 
   const selected = US_STATES.find(s => s.abbr === value);
   const filtered = search.trim()
@@ -459,25 +580,44 @@ function StateSelect({
   }
   function closePanel() { setOpen(false); setSearch(""); setRect(null); }
 
-  // Close on outside click or scroll
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => {
-      const panel = document.getElementById("ss-fixed-panel");
-      if (
-        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
-        (!panel || !panel.contains(e.target as Node))
-      ) closePanel();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("scroll", closePanel, true);
+
+    // Track pointer-inside so scroll and mouseup checks don't misfire
+    function onPointerDown(e: PointerEvent) {
+      const t = e.target as Node;
+      pointerInsideRef.current = !!(
+        (triggerRef.current && triggerRef.current.contains(t)) ||
+        (panelRef.current   && panelRef.current.contains(t))
+      );
+    }
+
+    // Close only when the pointer was clearly outside both trigger and panel
+    function onPointerUp(e: PointerEvent) {
+      if (pointerInsideRef.current) return;
+      const t = e.target as Node;
+      const insideTrigger = triggerRef.current?.contains(t);
+      const insidePanel   = panelRef.current?.contains(t);
+      if (!insideTrigger && !insidePanel) closePanel();
+    }
+
+    // Close on scroll ONLY if the scroll target is outside the panel list
+    function onScroll(e: Event) {
+      if (panelRef.current && panelRef.current.contains(e.target as Node)) return;
+      closePanel();
+    }
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup",   onPointerUp,   true);
+    document.addEventListener("scroll",      onScroll,      true);
     return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("scroll", closePanel, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup",   onPointerUp,   true);
+      document.removeEventListener("scroll",      onScroll,      true);
     };
   }, [open]);
 
-  // Focus search on open
+  // Focus search when panel opens; scroll to selected item
   useEffect(() => {
     if (!open) return;
     setTimeout(() => searchRef.current?.focus(), 20);
@@ -485,7 +625,7 @@ function StateSelect({
       const el = listRef.current.querySelector(".ss-selected") as HTMLElement | null;
       if (el) el.scrollIntoView({ block: "nearest" });
     }
-  }, [open, value]);
+  }, [open]);
 
   function pick(abbr: string) { onChange(abbr); closePanel(); }
 
@@ -493,11 +633,16 @@ function StateSelect({
 
   return (
     <>
-      {/* Trigger */}
+      {/* Trigger wrapper */}
       <div ref={triggerRef} style={{ position: "relative", width: width ?? "100%" }}>
         <button
           type="button"
           className={"ss-trigger" + (open ? " open" : "") + (!selected ? " placeholder" : "")}
+          onPointerDown={e => {
+            // Mark as inside so the document pointerup handler won't close us
+            pointerInsideRef.current = true;
+            e.currentTarget.focus();
+          }}
           onClick={() => open ? closePanel() : openPanel()}
         >
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
@@ -511,10 +656,10 @@ function StateSelect({
         </button>
       </div>
 
-      {/* Fixed-position panel — position:fixed escapes overflow:hidden on all ancestors */}
+      {/* Fixed panel — position:fixed escapes overflow:hidden on all ancestors */}
       {open && rect && (
         <div
-          id="ss-fixed-panel"
+          ref={panelRef}
           className="ss-panel"
           style={{
             position: "fixed",
@@ -525,6 +670,9 @@ function StateSelect({
             maxWidth: Math.min(300, (typeof window !== "undefined" ? window.innerWidth : 400) - rect.left - 8),
             zIndex: 9999,
           }}
+          // Prevent any click inside the panel from bubbling up and being mistaken
+          // for an outside click by ancestor handlers
+          onPointerDown={e => e.stopPropagation()}
         >
           {/* Search */}
           <div className="ss-search-wrap">
@@ -534,19 +682,26 @@ function StateSelect({
               </svg>
             </span>
             <input
-              ref={searchRef} type="text" className="ss-search"
-              placeholder="Search states…" value={search}
+              ref={searchRef}
+              type="text"
+              className="ss-search"
+              placeholder="Search states…"
+              value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
-                if (e.key === "Escape") closePanel();
+                if (e.key === "Escape") { e.stopPropagation(); closePanel(); }
                 if (e.key === "Enter" && filtered.length === 1) pick(filtered[0].abbr);
               }}
             />
           </div>
 
-          {/* List */}
+          {/* Option list */}
           <div ref={listRef} className="ss-list">
-            <div className={"ss-option ss-clear" + (!value ? " ss-selected" : "")} onClick={() => pick("")}>
+            <div
+              className={"ss-option ss-clear" + (!value ? " ss-selected" : "")}
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => pick("")}
+            >
               Any state
             </div>
             {filtered.length === 0
@@ -554,7 +709,12 @@ function StateSelect({
               : filtered.map(s => {
                   const isSel = s.abbr === value;
                   return (
-                    <div key={s.abbr} className={"ss-option" + (isSel ? " ss-selected" : "")} onClick={() => pick(s.abbr)}>
+                    <div
+                      key={s.abbr}
+                      className={"ss-option" + (isSel ? " ss-selected" : "")}
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={() => pick(s.abbr)}
+                    >
                       <span className="ss-abbr">{s.abbr}</span>
                       <span className="ss-name">{s.name}</span>
                       {isSel && (
@@ -894,133 +1054,280 @@ function RentometerSection({ address: _address }: { address: string }) {
   );
 }
 
-// ─── BuyerResults — no IIFE, proper component ────────────────────────────────
+// ─── BuyerResults — premium Home Buyer dashboard ────────────────────────────
 function BuyerResults({ result, onSwitchToInvestor }: { result: AnalysisResult; onSwitchToInvestor: () => void }) {
-  const monthly = result.r.totalMonthly;
-  const mortgage = result.r.mortgage;
-  const downPct = result.d.price > 0 ? result.d.down / result.d.price : 0;
+  const { r, d } = result;
+  const monthly    = r.totalMonthly;
+  const mortgage   = r.mortgage;
+  const downPct    = d.price > 0 ? d.down / d.price : 0;
   const downPctRound = Math.round(downPct * 100);
-  const income28 = Math.round(monthly / 0.28 * 12);
-  const income36 = Math.round(monthly / 0.36 * 12);
-  const loan = result.d.price - result.d.down;
+  const loan       = d.price - d.down;
   const annualCost = Math.round(monthly * 12);
+  const income28   = Math.round(monthly / 0.28 * 12);
+  const income36   = Math.round(monthly / 0.36 * 12);
+  const closingEst = Math.round(d.price * 0.025); // ~2.5% closing cost estimate
+  const cashToClose = d.down + closingEst;
+  const pmiBadge   = downPctRound < 20;
 
-  // Affordability score: based on down payment and DTI comfort zone
-  // 80–100 = very comfortable, 60–79 = manageable, 40–59 = tight, <40 = stretched
+  // Affordability score
   let afScore = 70;
   if (downPctRound >= 20) afScore += 15; else if (downPctRound >= 10) afScore += 5; else afScore -= 15;
-  if (result.d.rate <= 6) afScore += 10; else if (result.d.rate <= 7.5) afScore += 3; else afScore -= 7;
-  if (result.d.term >= 30) afScore += 2;
+  if (d.rate <= 6) afScore += 10; else if (d.rate <= 7.5) afScore += 3; else afScore -= 7;
   afScore = Math.max(1, Math.min(100, Math.round(afScore)));
-
   const afLabel = afScore >= 75 ? "Comfortable" : afScore >= 55 ? "Manageable" : "Stretched";
   const afColor = afScore >= 75 ? C.green : afScore >= 55 ? C.amber : C.red;
   const afReason = afScore >= 75
     ? `Strong down payment (${downPctRound}%) and reasonable rate keep monthly costs in check.`
     : afScore >= 55
-    ? `This home is within reach, but budget carefully. ${downPctRound < 20 ? "PMI adds cost until you hit 20% equity." : "Rate is elevated — consider a 15-year or buydown."}`
-    : `Monthly costs may be a stretch. ${downPctRound < 10 ? "Low down payment increases long-term cost significantly." : "Consider a lower price point or larger down payment."}`;
+    ? `This home is within reach — budget carefully. ${downPctRound < 20 ? "PMI adds cost until 20% equity." : "Consider rate buydown options."}`
+    : `Monthly costs may be a stretch. ${downPctRound < 10 ? "Low down payment increases long-term cost significantly." : "A lower price or larger down payment would help."}`;
 
-  const pmiBadge = downPctRound < 20;
+  const sh: React.CSSProperties = {
+    fontSize: 10, letterSpacing: "0.13em", textTransform: "uppercase",
+    color: "#64748b", fontWeight: 700, marginBottom: 14,
+    display: "flex", alignItems: "center", gap: 8,
+  };
+  const rule = <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />;
+  const fmtK = (n: number) => n >= 1000 ? "$" + (n / 1000).toFixed(0) + "k" : "$" + n;
+
+  // ── Monthly payment donut chart (SVG) ──────────────────────────────────────
+  function MonthlyDonut() {
+    if (monthly <= 0) return null;
+    const slices = [
+      { label: "P&I",        val: mortgage,          color: "#2563eb" },
+      { label: "Taxes",      val: d.taxes,           color: "#7c3aed" },
+      { label: "Insurance",  val: d.insurance,       color: "#0ea5e9" },
+      { label: "HOA",        val: d.hoa,             color: "#d97706" },
+      { label: "Other",      val: d.other,           color: "#94a3b8" },
+    ].filter(s => s.val > 0);
+
+    const total = slices.reduce((s, x) => s + x.val, 0);
+    const CX = 60, CY = 60, R = 48, r2 = 28;
+    let cumAngle = -Math.PI / 2;
+
+    function arc(pct: number, radius: number) {
+      const startAngle = cumAngle;
+      cumAngle += pct * Math.PI * 2;
+      const laf = pct > 0.5 ? 1 : 0;
+      const x1 = CX + radius * Math.cos(startAngle);
+      const y1 = CY + radius * Math.sin(startAngle);
+      const x2 = CX + radius * Math.cos(cumAngle);
+      const y2 = CY + radius * Math.sin(cumAngle);
+      return `M ${CX} ${CY} L ${x1} ${y1} A ${radius} ${radius} 0 ${laf} 1 ${x2} ${y2} Z`;
+    }
+
+    // Reset cumAngle for first pass
+    cumAngle = -Math.PI / 2;
+
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <svg width={120} height={120} viewBox="0 0 120 120">
+          {slices.map((s, i) => {
+            const pct = s.val / total;
+            const path = arc(pct, R);
+            return <path key={i} d={path} fill={s.color} stroke="#fff" strokeWidth={1.5} />;
+          })}
+          <circle cx={CX} cy={CY} r={r2} fill="#fff" />
+          <text x={CX} y={CY - 5} textAnchor="middle" style={{ fontSize: 11, fontWeight: 800, fill: "#0f172a" }}>
+            {fmtK(monthly)}
+          </text>
+          <text x={CX} y={CY + 10} textAnchor="middle" style={{ fontSize: 8, fill: "#94a3b8" }}>/ month</text>
+        </svg>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {slices.map((s, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: "#475569" }}>{s.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#0f172a", marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>{fmtK(s.val)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Cash to close bar chart ────────────────────────────────────────────────
+  function CashToCloseChart() {
+    const bars = [
+      { label: "Down Payment",   val: d.down,      color: "#2563eb" },
+      { label: "Est. Closing",   val: closingEst,  color: "#7c3aed" },
+    ];
+    const maxVal = Math.max(...bars.map(b => b.val), 1);
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {bars.map((b, i) => (
+          <div key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: "#475569" }}>{b.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>{fmtK(b.val)}</span>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: "#f1f5f9", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 999, width: `${(b.val / maxVal) * 100}%`, background: b.color, transition: "width 0.5s ease" }} />
+            </div>
+          </div>
+        ))}
+        <div style={{ height: 1, background: "#e2e8f0", margin: "2px 0" }} />
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Total Cash to Close</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: "#2563eb", fontVariantNumeric: "tabular-nums" }}>{fmtK(cashToClose)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Affordability income bars ──────────────────────────────────────────────
+  function AffordabilityBars() {
+    const maxIncome = Math.max(income28, income36);
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[
+          { label: "28% rule — housing only", val: income28, color: "#2563eb", desc: "Housing ≤ 28% of gross income" },
+          { label: "36% rule — all debt",     val: income36, color: "#7c3aed", desc: "All debt ≤ 36% of gross income" },
+        ].map((b, i) => (
+          <div key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+              <span style={{ fontSize: 11, color: "#475569" }}>{b.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>${b.val.toLocaleString()}/yr</span>
+            </div>
+            <div style={{ height: 7, borderRadius: 999, background: "#f1f5f9", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 999, width: `${(b.val / maxIncome) * 100}%`, background: b.color, transition: "width 0.5s ease" }} />
+            </div>
+            <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 3 }}>{b.desc}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Simple amortization preview (Year 1 vs Year 10 vs Year 30) ────────────
+  function AmortizationPreview() {
+    if (loan <= 0 || d.rate <= 0) return null;
+    const monthlyRate = d.rate / 100 / 12;
+    const n = d.term * 12;
+    const pAndI = monthlyRate > 0 ? loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1) : loan / n;
+
+    function calcAtYear(yr: number) {
+      let bal = loan, totInt = 0, totPrin = 0;
+      const months = Math.min(yr * 12, n);
+      for (let m = 0; m < months; m++) {
+        const int = bal * monthlyRate;
+        const prin = pAndI - int;
+        totInt += int; totPrin += prin; bal -= prin;
+      }
+      return { interest: Math.round(totInt), principal: Math.round(totPrin), balance: Math.max(0, Math.round(bal)) };
+    }
+
+    const snapshots = [1, 5, 10, 30].filter(y => y <= d.term).map(y => ({ yr: y, ...calcAtYear(y) }));
+    const maxPaid = Math.max(...snapshots.map(s => s.interest + s.principal));
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {snapshots.map((s, i) => {
+          const intPct  = (s.interest  / (s.interest + s.principal)) * 100;
+          const prinPct = (s.principal / (s.interest + s.principal)) * 100;
+          return (
+            <div key={i}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 11, color: "#475569" }}>Year {s.yr}</span>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Balance: <strong style={{ color: "#0f172a" }}>{fmtK(s.balance)}</strong>
+                </span>
+              </div>
+              <div style={{ height: 10, borderRadius: 999, overflow: "hidden", display: "flex", background: "#f1f5f9", width: `${((s.interest + s.principal) / maxPaid) * 100}%` }}>
+                <div style={{ width: `${intPct}%`,  background: "#dc2626", transition: "width 0.5s" }} />
+                <div style={{ width: `${prinPct}%`, background: "#059669", transition: "width 0.5s" }} />
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display: "flex", gap: 14, marginTop: 2 }}>
+          {[["#dc2626", "Interest paid"], ["#059669", "Principal paid"]].map(([col, lbl]) => (
+            <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: col }} />
+              <span style={{ fontSize: 10, color: "#64748b" }}>{lbl}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      {/* Affordability Score — buyer equivalent of Deal Score */}
-      <div style={{ paddingBottom: 40, marginBottom: 40, borderBottom: `1px solid ${C.rule}` }}>
-        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 6 }}>
-          Affordability Score
-        </p>
-        <p style={{ fontSize: 11, color: C.faint, marginBottom: 20, fontStyle: "italic" }}>
-          How comfortably this purchase fits your financial profile
-        </p>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 28, marginBottom: 16 }}>
-          <span style={{ fontSize: 100, fontWeight: 500, lineHeight: 0.9, letterSpacing: "-0.055em", color: afColor, fontVariantNumeric: "tabular-nums" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ── Affordability Score ── */}
+      <div>
+        <div style={{ ...sh }}><span>Affordability Score</span>{rule}</div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 14 }}>
+          <span style={{ fontSize: 80, fontWeight: 800, lineHeight: 0.88, letterSpacing: "-0.055em", color: afColor, fontVariantNumeric: "tabular-nums", display: "block", flexShrink: 0 }}>
             {afScore}
           </span>
-          <div>
-            <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: afColor, fontWeight: 600 }}>{afLabel}</span>
-            <p style={{ fontSize: 12, color: C.muted, marginTop: 10, lineHeight: 1.7, maxWidth: 200 }}>{afReason}</p>
+          <div style={{ paddingTop: 4, flex: 1 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: afColor, background: afColor + "14", border: `1px solid ${afColor}40`, borderRadius: 999, padding: "3px 10px" }}>{afLabel}</span>
+            <div style={{ marginTop: 10, height: 5, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 999, width: `${afScore}%`, background: afColor, transition: "width 0.6s ease" }} />
+            </div>
+            <p style={{ fontSize: 11, color: "#475569", marginTop: 8, lineHeight: 1.6 }}>{afReason}</p>
           </div>
         </div>
         {pmiBadge && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", background: "#fdf5e8", border: "1px solid #e8c87a" }}>
-            <span style={{ fontSize: 9, background: C.amber, color: "#fff", padding: "1px 6px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>NOTE</span>
-            <span style={{ fontSize: 11, color: "#7a5500" }}>PMI likely required — down payment below 20%</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8 }}>
+            <span style={{ fontSize: 9, background: C.amber, color: "#fff", padding: "2px 7px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 4 }}>PMI</span>
+            <span style={{ fontSize: 11, color: "#92400e" }}>Down payment below 20% — PMI will apply until you reach 20% equity</span>
           </div>
         )}
       </div>
 
-      {/* Monthly cost breakdown */}
-      <div style={{ paddingBottom: 36, marginBottom: 36, borderBottom: `1px solid ${C.rule}` }}>
-        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 24 }}>
-          Monthly Cost Breakdown
-        </p>
-        <MetRow label="Principal & Interest" value={fmt(mortgage)} />
-        {result.d.taxes > 0 && <MetRow label="Property Taxes" value={fmt(result.d.taxes)} />}
-        {result.d.insurance > 0 && <MetRow label="Homeowner's Insurance" value={fmt(result.d.insurance)} />}
-        {result.d.hoa > 0 && <MetRow label="HOA Fees" value={fmt(result.d.hoa)} />}
-        {result.d.other > 0 && <MetRow label="Other Expenses" value={fmt(result.d.other)} />}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "16px 0 2px", borderTop: `1px solid ${C.rule}`, marginTop: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.text, letterSpacing: "0.1em", textTransform: "uppercase" }}>Total Monthly Cost</span>
-          <span style={{ fontSize: 20, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{fmt(monthly)}</span>
-        </div>
+      {/* ── Stat cards row ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+        {[
+          { label: "Monthly Payment",  val: fmtK(monthly),           sub: `$${annualCost.toLocaleString()}/yr`,       color: "#0f172a" },
+          { label: "Loan Amount",      val: fmtK(loan),              sub: `${downPctRound}% down`,                    color: downPctRound >= 20 ? C.green : C.amber },
+          { label: "Cash to Close",    val: fmtK(cashToClose),       sub: `incl. ~${fmtK(closingEst)} closing`,      color: "#0f172a" },
+          { label: "Income Needed",    val: "$" + (income28 / 1000).toFixed(0) + "k/yr", sub: "at 28% housing ratio", color: "#0f172a" },
+        ].map(c => (
+          <div key={c.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+            <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>{c.label}</p>
+            <p style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.04em", color: c.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{c.val}</p>
+            <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>{c.sub}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Affordability summary */}
-      <div style={{ paddingBottom: 36, marginBottom: 36, borderBottom: `1px solid ${C.rule}` }}>
-        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 24 }}>
-          Affordability Summary
-        </p>
-        <div style={{ padding: "12px 0", borderBottom: `1px solid ${C.rule}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Min. Income (28% rule)</span>
-            <span style={{ fontSize: 15, fontWeight: 500, color: C.text, fontVariantNumeric: "tabular-nums" }}>${income28.toLocaleString()}/yr</span>
-          </div>
-          <p style={{ fontSize: 10, color: C.faint, marginTop: 3, fontStyle: "italic" }}>Housing costs ≤ 28% of gross monthly income</p>
-        </div>
-        <div style={{ padding: "12px 0", borderBottom: `1px solid ${C.rule}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Min. Income (36% rule)</span>
-            <span style={{ fontSize: 15, fontWeight: 500, color: C.text, fontVariantNumeric: "tabular-nums" }}>${income36.toLocaleString()}/yr</span>
-          </div>
-          <p style={{ fontSize: 10, color: C.faint, marginTop: 3, fontStyle: "italic" }}>Total debt ≤ 36% of gross monthly income</p>
-        </div>
-        <div style={{ padding: "12px 0", borderBottom: `1px solid ${C.rule}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Down Payment</span>
-            <span style={{ fontSize: 15, fontWeight: 500, color: downPctRound < 20 ? C.amber : C.text, fontVariantNumeric: "tabular-nums" }}>
-              {fmt(result.d.down)} ({downPctRound}%)
-            </span>
-          </div>
-          <p style={{ fontSize: 10, color: downPctRound < 20 ? C.amber : C.faint, marginTop: 3, fontStyle: "italic" }}>
-            {downPctRound >= 20 ? "20%+ — PMI not required" : "Below 20% — expect PMI until you reach 20% equity"}
-          </p>
-        </div>
-        <div style={{ padding: "12px 0", borderBottom: `1px solid ${C.rule}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Loan Amount</span>
-            <span style={{ fontSize: 15, fontWeight: 500, color: C.text, fontVariantNumeric: "tabular-nums" }}>{fmt(loan)}</span>
-          </div>
-        </div>
-        <div style={{ padding: "12px 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 10, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Annual Housing Cost</span>
-            <span style={{ fontSize: 15, fontWeight: 500, color: C.text, fontVariantNumeric: "tabular-nums" }}>${annualCost.toLocaleString()}/yr</span>
-          </div>
-        </div>
+      {/* ── Monthly breakdown donut ── */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+        <div style={{ ...sh }}><span>Monthly Payment Breakdown</span>{rule}</div>
+        <MonthlyDonut />
       </div>
 
-      {/* Investor nudge */}
-      <div style={{ padding: "14px 16px", background: C.bg2, border: `1px solid ${C.rule}` }}>
-        <p style={{ fontSize: 11, color: C.muted, lineHeight: 1.7 }}>
+      {/* ── Cash to close ── */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+        <div style={{ ...sh }}><span>Upfront Cash Needed</span>{rule}</div>
+        <CashToCloseChart />
+      </div>
+
+      {/* ── Affordability bars ── */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+        <div style={{ ...sh }}><span>Income Needed to Qualify</span>{rule}</div>
+        <AffordabilityBars />
+      </div>
+
+      {/* ── Amortization preview ── */}
+      {loan > 0 && d.rate > 0 && (
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+          <div style={{ ...sh }}><span>Loan Payoff Snapshot</span>{rule}</div>
+          <AmortizationPreview />
+        </div>
+      )}
+
+      {/* ── Investor nudge ── */}
+      <div style={{ background: "linear-gradient(135deg,#eff6ff,#f0fdf4)", border: "1px solid #bfdbfe", borderRadius: 14, padding: "14px 16px" }}>
+        <p style={{ fontSize: 12, color: "#1e3a5f", lineHeight: 1.7, margin: 0 }}>
           Thinking about renting this property out?{" "}
-          <button
-            onClick={onSwitchToInvestor}
-            style={{ background: "none", border: "none", color: C.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline", textUnderlineOffset: 2 }}
-          >
-            Switch to Investor mode
+          <button onClick={onSwitchToInvestor} style={{ background: "none", border: "none", color: "#2563eb", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+            Switch to Investor mode →
           </button>
-          {" "}to see cash flow, cap rate, and your Deal Score.
+          {" "}See cash flow, cap rate, and your Deal Score.
         </p>
       </div>
     </div>
@@ -1415,11 +1722,27 @@ function buildDrivers(r: DealResult, d: DealInput, stateAbbr: string): ScoreDriv
     });
   }
 
-  // Sort by absolute impact, keep top 5
+  // Crime / safety (state-level estimate; upgradeable to city/zip API)
+  if (r.crimeAdj !== 0) {
+    drivers.push({
+      label: "Crime / Safety (estimate)",
+      pts: r.crimeAdj,
+      note: r.crimeNote,
+    });
+  } else if (stateAbbr) {
+    // Neutral tier — still show it so users know it was considered
+    drivers.push({
+      label: "Crime / Safety (estimate)",
+      pts: 0,
+      note: r.crimeNote || "average crime rate for state",
+    });
+  }
+
+  // Sort by absolute impact, keep top 6
   return drivers
     .filter(d => d.pts !== 0)
     .sort((a, b) => Math.abs(b.pts) - Math.abs(a.pts))
-    .slice(0, 5);
+    .slice(0, 6);
 }
 
 // ─── Optimization suggestions ─────────────────────────────────────────────────
@@ -2317,6 +2640,26 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
           ) : (
             <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>Select a state to factor in market conditions</div>
           )}
+          {/* Crime / Safety row */}
+          {stateAbbr ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: 11, color: "#64748b" }}>Crime / Safety</span>
+                <span style={{ fontSize: 9, color: "#94a3b8", marginLeft: 6, fontStyle: "italic" }}>state est.</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                {r.crimeAdj !== 0
+                  ? <span style={{ fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: r.crimeAdj > 0 ? "#059669" : "#dc2626" }}>{r.crimeAdj > 0 ? "+" : ""}{r.crimeAdj}</span>
+                  : <span style={{ fontSize: 11, color: "#94a3b8" }}>Neutral</span>}
+                <span style={{ fontSize: 9, color: "#94a3b8", maxWidth: 120, textAlign: "right", lineHeight: 1.3 }}>{r.crimeAdj > 0 ? "low" : r.crimeAdj < 0 ? "high" : "avg"} crime</span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic", display: "flex", justifyContent: "space-between" }}>
+              <span>Crime / Safety</span>
+              <span style={{ fontSize: 9 }}>select state to estimate</span>
+            </div>
+          )}
           <div style={{ height: 1, background: "#e2e8f0" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Final score</span>
@@ -2325,19 +2668,19 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
         </div>
       </div>
 
-      {/* ══ 2. KPI CARDS ═══════════════════════════════════════════════════════ */}
+      {/* ══ 2. KPI CARDS — shown in left column on desktop, kept here for mobile ══ */}
       <div>
         <div style={{ ...sh }}><span>Key Metrics</span>{rule}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
           {[
-            { label: "Cash Flow / mo", value: fmtSigned(r.cashflow), sub: `${fmtSigned(r.annualCashflow)}/yr`, color: r.cashflow >= 0 ? C.green : C.red },
-            { label: "Cap Rate",       value: r.capRate.toFixed(2) + "%", sub: r.capRate >= 6 ? "Above benchmark" : r.capRate >= 4 ? "Average" : "Below avg", color: r.capRate >= 6 ? C.green : r.capRate < 4 ? C.red : "#475569" },
-            { label: "Cash-on-Cash",   value: r.coc.toFixed(2) + "%", sub: r.coc >= 8 ? "Excellent" : r.coc >= 5 ? "Acceptable" : "Below target", color: r.coc >= 8 ? C.green : r.coc < 3 ? C.red : "#475569" },
-            { label: "DSCR",           value: r.dscr.toFixed(2), sub: r.dscr >= 1.25 ? "Healthy coverage" : r.dscr >= 1.0 ? "Breakeven" : "Negative carry", color: r.dscr >= 1.25 ? C.green : r.dscr < 1.0 ? C.red : "#475569" },
+            { label: "Annual Cash Flow", value: fmtSigned(r.annualCashflow), sub: `${fmtSigned(r.cashflow)}/mo`, color: r.cashflow >= 0 ? C.green : C.red },
+            { label: "Cap Rate",         value: r.capRate.toFixed(2) + "%",  sub: r.capRate >= 6 ? "Above benchmark" : r.capRate >= 4 ? "Average" : "Below avg", color: r.capRate >= 6 ? C.green : r.capRate < 4 ? C.red : "#475569" },
+            { label: "Cash-on-Cash",     value: r.coc.toFixed(2) + "%",      sub: r.coc >= 8 ? "Excellent" : r.coc >= 5 ? "Acceptable" : "Below target", color: r.coc >= 8 ? C.green : r.coc < 3 ? C.red : "#475569" },
+            { label: "DSCR",             value: r.dscr.toFixed(2) + "x",     sub: r.dscr >= 1.25 ? "Healthy coverage" : r.dscr >= 1.0 ? "Breakeven" : "Negative carry", color: r.dscr >= 1.25 ? C.green : r.dscr < 1.0 ? C.red : "#475569" },
           ].map(card => (
             <div key={card.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
               <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>{card.label}</p>
-              <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.04em", color: card.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{card.value}</p>
+              <p style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.04em", color: card.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{card.value}</p>
               <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>{card.sub}</p>
             </div>
           ))}
@@ -2415,51 +2758,6 @@ function InvestorDashboard({ result, saved, onSave, onFocusRent, scoreColor, use
       <div>
         <div style={{ ...sh }}><span>Income vs. Expenses</span>{rule}</div>
         <BarChart income={r.effectiveRent} expenses={r.totalMonthly} d={d} />
-      </div>
-
-      {/* ══ 7. MONTHLY BREAKDOWN ═══════════════════════════════════════════════ */}
-      <div>
-        <div style={{ ...sh }}><span>Monthly Breakdown</span>{rule}</div>
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-          {/* Income sub-header */}
-          <div style={{ padding: "8px 16px", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
-            <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>Income</span>
-          </div>
-          <div style={{ padding: "4px 16px" }}>
-            <MetRow label="Gross Rent" value={fmt(d.rent)} />
-            <MetRow label="Vacancy Loss" value={"−" + fmt(vacancyLoss)} accent="red" />
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Effective Rent</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.green, fontVariantNumeric: "tabular-nums" }}>{fmt(r.effectiveRent)}</span>
-            </div>
-          </div>
-          {/* Expenses sub-header */}
-          <div style={{ padding: "8px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #f1f5f9" }}>
-            <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>Expenses</span>
-          </div>
-          <div style={{ padding: "4px 16px" }}>
-            <MetRow label="Mortgage (P&I)" value={fmt(r.mortgage)} />
-            {d.taxes > 0 && <MetRow label="Property Taxes" value={fmt(d.taxes)} />}
-            {d.insurance > 0 && <MetRow label="Insurance" value={fmt(d.insurance)} />}
-            {d.hoa > 0 && <MetRow label="HOA" value={fmt(d.hoa)} />}
-            {d.repairs > 0 && <MetRow label="Repairs & Maint." value={fmt(d.repairs)} />}
-            {d.mgmt > 0 && <MetRow label="Mgmt" value={fmt(d.mgmt)} />}
-            {d.other > 0 && <MetRow label="Other" value={fmt(d.other)} />}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Total Expenses</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.red, fontVariantNumeric: "tabular-nums" }}>{fmt(r.totalMonthly)}</span>
-            </div>
-          </div>
-          {/* Net cash flow */}
-          <div style={{
-            padding: "11px 16px", borderTop: "1.5px solid #e2e8f0",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            background: r.cashflow >= 0 ? "#f0fdf4" : "#fff1f2",
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Net Cash Flow / mo</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: r.cashflow >= 0 ? C.green : C.red, fontVariantNumeric: "tabular-nums" }}>{fmtSigned(r.cashflow)}</span>
-          </div>
-        </div>
       </div>
 
       {/* ══ 8. RENT VS BUY ════════════════════════════════════════════════════ */}
@@ -3639,6 +3937,9 @@ function LandingPage({ onAnalyze, onLearn, onNavigate }: { onAnalyze: () => void
               See detailed walkthrough →
             </button>
           </div>
+          <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 18, lineHeight: 1.6 }}>
+            Location factors like safety and climate are estimated. Always verify local conditions independently.
+          </p>
         </FadeIn>
       </section>
       {/* ── CTA BLOCK ── */}
@@ -4386,7 +4687,7 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel, 
 }
 
 const EMPTY_FORM: Record<string, string> = {
-  address: "", state: "", price: "", down: "", rate: "", term: "30",
+  address: "", zip: "", state: "", price: "", down: "", rate: "", term: "30",
   rent: "", vacancy: "5", taxes: "", insurance: "",
   hoa: "0", repairs: "", mgmt: "", other: "0",
 };
@@ -4616,6 +4917,48 @@ function StateSummaryCard({ stateAbbr }: { stateAbbr: string }) {
   );
 }
 
+
+// ─── SafetyBadge — compact safety estimate pill ───────────────────────────────
+// Shows a ZIP-based (or state-based) safety tier inline in the address card.
+// Swap the lookup in calcCrimeAdj() with a real API later.
+function SafetyBadge({ zip, stateAbbr }: { zip: string; stateAbbr: string }) {
+  const hasZip   = /^\d{5}$/.test(zip.trim());
+  const hasState = !!stateAbbr;
+  if (!hasZip && !hasState) return null;
+
+  const { adj, tier } = calcCrimeAdj(stateAbbr, zip);
+
+  const config: Record<string, { label: string; bg: string; border: string; dot: string; text: string }> = {
+    "very safe": { label: "Low Risk",      bg: "#f0fdf4", border: "#bbf7d0", dot: "#059669", text: "#065f46" },
+    "safe":      { label: "Low Risk",      bg: "#f0fdf4", border: "#bbf7d0", dot: "#059669", text: "#065f46" },
+    "average":   { label: "Moderate",      bg: "#fffbeb", border: "#fde68a", dot: "#d97706", text: "#92400e" },
+    "elevated":  { label: "Higher Risk",   bg: "#fff7ed", border: "#fed7aa", dot: "#ea580c", text: "#9a3412" },
+    "high":      { label: "High Risk",     bg: "#fff1f2", border: "#fecdd3", dot: "#dc2626", text: "#991b1b" },
+    "unknown":   { label: "No Data",       bg: "#f8fafc", border: "#e2e8f0", dot: "#94a3b8", text: "#64748b" },
+  };
+  const s = config[tier] ?? config["unknown"];
+  const source = hasZip ? `ZIP ${zip.trim()}` : stateAbbr;
+
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: "4px 10px", borderRadius: 99,
+      background: s.bg, border: `1px solid ${s.border}`,
+      marginTop: 8,
+    }}>
+      <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: s.text }}>Safety: {s.label}</span>
+      <span style={{ fontSize: 10, color: s.text, opacity: 0.7 }}>· {source} est.</span>
+      {tier !== "unknown" && (
+        <span title={`Based on state-level FBI violent crime data. ZIP-level data available when API connected.`}
+          style={{ width: 13, height: 13, borderRadius: "50%", border: `1px solid ${s.border}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: s.text, cursor: "default", flexShrink: 0 }}>
+          ?
+        </span>
+      )}
+    </div>
+  );
+}
+
 function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: SavedDeal) => void; prefill?: DealInput | null; user: AuthUser | null; onOpenLogin: () => void }) {
   const [mode, setMode] = useState<Mode>("manual");
   const [appMode, setAppMode] = useState<AppMode>("investor");
@@ -4720,7 +5063,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
     };
 
     const rentMissing = d.rent === 0;
-    setResult({ r: calcDeal(d, form.state), d, rentMissing, stateAbbr: form.state });
+    setResult({ r: calcDeal(d, form.state, form.zip ?? ""), d, rentMissing, stateAbbr: form.state });
     setSaved(false);
   }
 
@@ -4963,6 +5306,25 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                     width={90}
                   />
                 </div>
+                {/* ZIP + Safety row */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                  <div style={{ position: "relative", width: 100, flexShrink: 0 }}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={5}
+                      placeholder="ZIP"
+                      value={form.zip ?? ""}
+                      onChange={e => {
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 5);
+                        setField("zip")(v);
+                      }}
+                      className="az-input"
+                      style={{ width: "100%", textAlign: "center", letterSpacing: "0.06em" }}
+                    />
+                  </div>
+                  <SafetyBadge zip={form.zip ?? ""} stateAbbr={form.state} />
+                </div>
                 <StateSummaryCard stateAbbr={form.state} />
               </div>
 
@@ -5142,6 +5504,80 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
               <button onClick={analyze} className="az-btn-primary" style={{ marginTop: 0 }}>
                 {isBuyer ? "Calculate My Costs" : "Analyze This Deal"}
               </button>
+
+              {/* ── Left-column result cards — appear after analysis ── */}
+              {result && !isBuyer && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+                  {/* KPI summary strip */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8 }}>
+                    {[
+                      { label: "Cash Flow",  val: (result.r.cashflow >= 0 ? "+" : "") + "$" + Math.abs(Math.round(result.r.cashflow)).toLocaleString() + "/mo", color: result.r.cashflow >= 0 ? "#059669" : "#dc2626" },
+                      { label: "Cap Rate",   val: result.r.capRate.toFixed(2) + "%",  color: result.r.capRate >= 6 ? "#059669" : result.r.capRate < 4 ? "#dc2626" : "#475569" },
+                      { label: "CoC Return", val: result.r.coc.toFixed(2) + "%",      color: result.r.coc >= 8 ? "#059669" : result.r.coc < 3 ? "#dc2626" : "#475569" },
+                      { label: "DSCR",       val: result.r.dscr.toFixed(2) + "x",     color: result.r.dscr >= 1.25 ? "#059669" : result.r.dscr < 1.0 ? "#dc2626" : "#475569" },
+                    ].map(k => (
+                      <div key={k.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+                        <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>{k.label}</p>
+                        <p style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em", color: k.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{k.val}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Monthly Breakdown — moved to left column */}
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+                    <div style={{ padding: "8px 16px", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>Income</span>
+                    </div>
+                    <div style={{ padding: "4px 16px" }}>
+                      <MetRow label="Gross Rent" value={fmt(result.d.rent)} />
+                      <MetRow label="Vacancy Loss" value={"−" + fmt(result.d.rent - result.r.effectiveRent)} accent="red" />
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Effective Rent</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#059669", fontVariantNumeric: "tabular-nums" }}>{fmt(result.r.effectiveRent)}</span>
+                      </div>
+                    </div>
+                    <div style={{ padding: "8px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>Expenses</span>
+                    </div>
+                    <div style={{ padding: "4px 16px" }}>
+                      <MetRow label="Mortgage (P&I)" value={fmt(result.r.mortgage)} />
+                      {result.d.taxes > 0    && <MetRow label="Taxes"      value={fmt(result.d.taxes)} />}
+                      {result.d.insurance > 0 && <MetRow label="Insurance" value={fmt(result.d.insurance)} />}
+                      {result.d.hoa > 0       && <MetRow label="HOA"       value={fmt(result.d.hoa)} />}
+                      {result.d.repairs > 0   && <MetRow label="Repairs"   value={fmt(result.d.repairs)} />}
+                      {result.d.mgmt > 0      && <MetRow label="Mgmt"      value={fmt(result.d.mgmt)} />}
+                      {result.d.other > 0     && <MetRow label="Other"     value={fmt(result.d.other)} />}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Total Expenses</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", fontVariantNumeric: "tabular-nums" }}>{fmt(result.r.totalMonthly)}</span>
+                      </div>
+                    </div>
+                    <div style={{ padding: "11px 16px", borderTop: "1.5px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", background: result.r.cashflow >= 0 ? "#f0fdf4" : "#fff1f2" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Net Cash Flow / mo</span>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: result.r.cashflow >= 0 ? "#059669" : "#dc2626", fontVariantNumeric: "tabular-nums" }}>
+                        {result.r.cashflow >= 0 ? "+" : "−"}${Math.abs(Math.round(result.r.cashflow)).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Left-column buyer summary strip */}
+              {result && isBuyer && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginTop: 12 }}>
+                  {[
+                    { label: "Monthly Payment", val: fmt(result.r.totalMonthly),          color: "#0f172a" },
+                    { label: "Loan Amount",      val: fmt(result.d.price - result.d.down), color: "#0f172a" },
+                    { label: "Cash to Close",    val: fmt(result.d.down + Math.round(result.d.price * 0.025)), color: "#2563eb" },
+                    { label: "Down Payment",     val: Math.round(result.d.price > 0 ? result.d.down / result.d.price * 100 : 0) + "%", color: Math.round(result.d.price > 0 ? result.d.down / result.d.price * 100 : 0) >= 20 ? "#059669" : "#d97706" },
+                  ].map(k => (
+                    <div key={k.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+                      <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>{k.label}</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em", color: k.color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{k.val}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Results column — sticky on desktop */}
@@ -6229,7 +6665,7 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
           <span style={eyebrow("A · Inputs", "#2563eb")}>A · Inputs</span>
           <h2 style={sectionH2}>What Dealistic needs from you.</h2>
           <p style={{ ...prose, maxWidth: 620, marginBottom: 32 }}>
-            Dealistic works with whatever you have. Enter property details manually or upload a CSV to analyze multiple deals at once. The only truly required field is a purchase price — everything else falls back to a smart default based on market norms.
+            Dealistic works with whatever you have. Enter property details manually or upload a CSV to analyze multiple deals at once. The only truly required field is a purchase price — everything else falls back to a smart default based on market norms. Location factors like safety, climate, and state risk are estimates — verify important details before making decisions.
           </p>
         </FadeIn>
 
@@ -6573,6 +7009,14 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
             <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 12 }}>Free to use. No account required.</p>
           </div>
         </FadeIn>
+      </section>
+
+      {/* ── Estimates note ── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,40px) clamp(32px,4vw,48px)" }}>
+        <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, borderTop: "1px solid #e2e8f0", paddingTop: 24 }}>
+          <strong style={{ color: "#64748b", fontWeight: 600 }}>About estimates.</strong>{" "}
+          Dealistic uses smart defaults for local risk factors — including safety, climate, and state-level investment conditions. These are estimates based on publicly available data and are not a substitute for independent due diligence. Verify zoning, insurance costs, neighborhood safety, and market conditions before making investment decisions.
+        </p>
       </section>
 
       <SiteFooter onNavigate={onNavigate} />
