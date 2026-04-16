@@ -2,9 +2,10 @@
 import React, { useState, useRef, useEffect, useCallback, Fragment } from "react";
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
-const LS_SESSION = "dealistic_session";   // { email, name, loginAt }
-const LS_USERS   = "dealistic_users";     // [{ email, name, passwordHash }]
-const LS_DEALS   = "dealistic_deals";     // SavedDeal[] keyed by userEmail
+const LS_SESSION  = "dealistic_session";   // { email, name, loginAt }
+const LS_USERS    = "dealistic_users";     // [{ email, name, passwordHash }]
+const LS_DEALS    = "dealistic_deals";     // SavedDeal[] keyed by userEmail
+const LS_DEFAULTS = "dealistic_defaults";  // { vacancy, repairs, mgmt, rate, state }
 
 function lsGet<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
@@ -5950,101 +5951,23 @@ function LearnPage({ onAnalyze, onNavigate }: { onAnalyze: () => void; onNavigat
           ))}
         </div>
 
-        {/* Import methods — 3-col feature block */}
+        {/* Start Your Analysis — single centered card */}
         <FadeIn delay={0.2}>
           <div style={{
-            marginTop: 24,
-            background: "rgba(255,255,255,0.7)",
+            marginTop: 28,
+            background: "rgba(255,255,255,0.85)",
             border: "1px solid #e2e8f0",
             borderRadius: 20,
-            padding: "24px 24px 20px",
+            padding: "32px 36px",
             backdropFilter: "blur(8px)",
+            textAlign: "center",
           }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 18 }}>
-              Three ways to start an analysis
+            <p style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em", marginBottom: 8 }}>
+              Start Your Analysis
             </p>
-            <style>{`
-              .import-methods-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 10px;
-              }
-              @media (max-width: 640px) {
-                .import-methods-grid { grid-template-columns: 1fr; }
-              }
-              .import-method-card {
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 14px;
-                padding: 16px;
-                cursor: default;
-                transition: background 0.18s, border-color 0.18s, transform 0.18s, box-shadow 0.18s;
-              }
-              .import-method-card:hover {
-                background: #fff;
-                border-color: #cbd5e1;
-                transform: translateY(-2px);
-                box-shadow: 0 4px 16px rgba(15,23,42,0.07);
-              }
-            `}</style>
-            <div className="import-methods-grid">
-              {([
-                {
-                  icon: (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                    </svg>
-                  ),
-                  color: "#2563eb",
-                  title: "Enter numbers manually",
-                  desc: "Fill in purchase price, rent, and expenses. Smart defaults handle anything you leave blank.",
-                },
-                {
-                  icon: (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
-                      <line x1="16" y1="13" x2="8" y2="13"/>
-                      <line x1="16" y1="17" x2="8" y2="17"/>
-                      <polyline points="10 9 9 9 8 9"/>
-                    </svg>
-                  ),
-                  color: "#7c3aed",
-                  title: "Upload a CSV",
-                  desc: "Analyze dozens of deals at once. Strong ones are flagged automatically.",
-                },
-                {
-                  icon: (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  ),
-                  color: "#059669",
-                  title: "Enter numbers manually",
-                  desc: "Fill in a few fields. Smart defaults handle anything you leave blank.",
-                },
-              ] as { icon: React.ReactNode; color: string; title: string; desc: string }[]).map((item, i) => (
-                <div key={i} className="import-method-card">
-                  <div style={{
-                    width: 34, height: 34, borderRadius: 10, marginBottom: 12,
-                    background: item.color + "12",
-                    border: `1px solid ${item.color}25`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    color: item.color,
-                  }}>
-                    {item.icon}
-                  </div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 4, letterSpacing: "-0.01em" }}>
-                    {item.title}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.55, margin: 0 }}>
-                    {item.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.65, margin: "0 auto", maxWidth: 400 }}>
+              Enter your deal details below. Manual entry and CSV upload are both supported — smart defaults handle the rest.
+            </p>
           </div>
         </FadeIn>
       </section>
@@ -6829,102 +6752,375 @@ function LogInPage({
 }
 
 // ── Account Page ──────────────────────────────────────────────────────────────
+interface UserDefaults {
+  vacancy: string; repairs: string; mgmt: string; rate: string; state: string;
+}
+const DEFAULT_SETTINGS: UserDefaults = { vacancy: "5", repairs: "5", mgmt: "8", rate: "7.25", state: "" };
+
 function AccountPage({
-  user, onLogOut, onNavigate,
-}: { user: AuthUser; onLogOut: () => void; onNavigate: (p: Page) => void; }) {
-  const [showConfirm, setShowConfirm] = useState(false);
+  user, onLogOut, onNavigate, onBack, deals: allDeals,
+}: {
+  user: AuthUser;
+  onLogOut: () => void;
+  onNavigate: (p: Page) => void;
+  onBack: () => void;
+  deals: SavedDeal[];
+}) {
+  const [showConfirm, setShowConfirm]   = useState(false);
+  const [defaults, setDefaults]         = useState<UserDefaults>(() => lsGet<UserDefaults>(LS_DEFAULTS) ?? DEFAULT_SETTINGS);
+  const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [activeTab, setActiveTab]       = useState<"overview"|"deals"|"settings">("overview");
+
+  // Filter this user's deals
+  const myDeals = allDeals.filter(d => !d.userEmail || d.userEmail === user.email);
+  const sorted  = [...myDeals].sort((a, b) => b.score - a.score);
+
+  // Stats
+  const totalDeals  = myDeals.length;
+  const avgScore    = totalDeals > 0 ? Math.round(myDeals.reduce((s, d) => s + d.score, 0) / totalDeals) : 0;
+  const bestScore   = totalDeals > 0 ? Math.max(...myDeals.map(d => d.score)) : 0;
+  const totalCF     = myDeals.reduce((s, d) => s + d.cashflow, 0);
+  const posDeals    = myDeals.filter(d => d.cashflow > 0).length;
+
+  // Trend data for mini line chart (last 10 deals by savedAt, show score)
+  const trendDeals = [...myDeals]
+    .sort((a, b) => (a.savedAt ?? "").localeCompare(b.savedAt ?? ""))
+    .slice(-10);
+
+  // Insights
+  const insights: { icon: string; text: string; color: string }[] = [];
+  if (totalDeals === 0) {
+    insights.push({ icon: "✏️", text: "Analyze your first deal to start building your portfolio.", color: "#2563eb" });
+  } else {
+    if (avgScore >= 70) insights.push({ icon: "🔥", text: `Strong portfolio — your average score is ${avgScore}. Keep targeting 70+.`, color: "#059669" });
+    else if (avgScore < 50) insights.push({ icon: "⚠️", text: `Average score is ${avgScore}. Look for deals with better cap rates or cash flow.`, color: "#d97706" });
+    if (myDeals.some(d => d.cashflow < 0)) insights.push({ icon: "📉", text: `${myDeals.filter(d => d.cashflow < 0).length} deal${myDeals.filter(d => d.cashflow < 0).length > 1 ? "s" : ""} with negative cash flow. Review expenses or pricing.`, color: "#dc2626" });
+    if (posDeals > 0) insights.push({ icon: "💰", text: `${posDeals} cash-flowing deal${posDeals > 1 ? "s" : ""} generating an estimated ${totalCF >= 0 ? "+" : ""}$${Math.round(totalCF).toLocaleString()}/mo combined.`, color: "#059669" });
+    if (bestScore >= 80) insights.push({ icon: "⭐", text: `Your top deal scores ${bestScore} — a strong benchmark for future analysis.`, color: "#2563eb" });
+  }
+
+  function saveDefaults(d: UserDefaults) {
+    setDefaults(d);
+    lsSet(LS_DEFAULTS, d);
+    setDefaultsSaved(true);
+    setTimeout(() => setDefaultsSaved(false), 2000);
+  }
+
+  const scoreColor = (s: number) => s >= 70 ? "#059669" : s >= 45 ? "#d97706" : "#dc2626";
+  const fmt = (n: number) => n >= 1000 ? "$" + (n / 1000).toFixed(1) + "k" : "$" + Math.round(n);
+
+  // Mini SVG line chart
+  function ScoreTrend() {
+    if (trendDeals.length < 2) return (
+      <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 11, color: "#94a3b8" }}>Analyze more deals to see trends</span>
+      </div>
+    );
+    const W = 280, H = 60, pad = 8;
+    const scores = trendDeals.map(d => d.score);
+    const minS = Math.min(...scores), maxS = Math.max(...scores);
+    const range = Math.max(maxS - minS, 10);
+    const px = (i: number) => pad + (i / (scores.length - 1)) * (W - pad * 2);
+    const py = (s: number) => H - pad - ((s - minS) / range) * (H - pad * 2);
+    const path = scores.map((s, i) => `${i === 0 ? "M" : "L"}${px(i)},${py(s)}`).join(" ");
+    const area = path + ` L${px(scores.length - 1)},${H - pad} L${pad},${H - pad}Z`;
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>
+        <defs>
+          <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#trend-fill)" />
+        <path d={path} fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {scores.map((s, i) => (
+          <circle key={i} cx={px(i)} cy={py(s)} r={3} fill="#2563eb" />
+        ))}
+        <text x={px(scores.length - 1)} y={py(scores[scores.length - 1]) - 6}
+          textAnchor="middle" style={{ fontSize: 9, fill: "#2563eb", fontWeight: 700 }}>
+          {scores[scores.length - 1]}
+        </text>
+      </svg>
+    );
+  }
+
+  const tabStyle = (t: typeof activeTab): React.CSSProperties => ({
+    padding: "8px 16px", border: "none", borderRadius: 8, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 12, fontWeight: 600, transition: "all 0.15s",
+    background: activeTab === t ? "#0f172a" : "transparent",
+    color: activeTab === t ? "#fff" : "#64748b",
+  });
+
+  const inp: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "8px 12px",
+    border: "1.5px solid #e2e8f0", borderRadius: 10,
+    fontSize: 13, color: "#0f172a", fontFamily: "inherit",
+    background: "#fff", outline: "none", transition: "border-color 0.18s",
+  };
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
-        <div style={{ marginBottom: 40 }}>
-          <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.faint, marginBottom: 12 }}>Dealistic</p>
-          <h1 style={{ fontSize: 32, fontWeight: 500, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Account</h1>
+    <div style={{ background: "#f8fafc", minHeight: "100vh" }}>
+      {/* ── Top bar ── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 50,
+        background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)",
+        borderBottom: "1px solid #e2e8f0",
+      }}>
+        <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: "#64748b", padding: 0, display: "flex", alignItems: "center", gap: 6, transition: "color 0.15s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#0f172a"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#64748b"; }}>
+            ← Back
+          </button>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em" }}>Dealistic</span>
+          <div style={{ width: 52 }} /> {/* spacer to center brand */}
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "clamp(28px,4vw,48px) clamp(16px,4vw,32px) 80px" }}>
+
+        {/* ── Profile header ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 32 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#1e3a5f,#2563eb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 4px 14px rgba(37,99,235,0.3)" }}>
+            <span style={{ fontSize: 20, fontWeight: 800, color: "#e0f2fe", textTransform: "uppercase" }}>{user.name.charAt(0)}</span>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: "0 0 2px" }}>{user.name}</h1>
+            <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>{user.email}</p>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button onClick={() => onNavigate("analyzer")} style={{ padding: "8px 18px", background: "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 2px 10px rgba(37,99,235,0.28)", transition: "opacity 0.15s" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.88"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}>
+              Analyze Deal
+            </button>
+          </div>
         </div>
 
-        {/* User info card */}
-        <div style={{ border: `1px solid ${C.rule}`, marginBottom: 20 }}>
-          <div style={{ padding: "20px", borderBottom: `1px solid ${C.rule}`, display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: "50%", background: C.pill,
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: C.pillTxt, textTransform: "uppercase" }}>
-                {user.name.charAt(0)}
-              </span>
-            </div>
-            <div>
-              <p style={{ fontSize: 15, fontWeight: 500, color: C.text, marginBottom: 2 }}>{user.name}</p>
-              <p style={{ fontSize: 12, color: C.faint }}>{user.email}</p>
-            </div>
-          </div>
-
-          {[
-            { label: "Analyzer", action: () => onNavigate("analyzer") },
-            { label: "My Deals", action: () => onNavigate("dashboard") },
-            
-          ].map((item, i, arr) => (
-            <button
-              key={item.label}
-              onClick={item.action}
-              style={{
-                width: "100%", padding: "14px 20px", background: "transparent", border: "none",
-                borderBottom: i < arr.length - 1 ? `1px solid ${C.rule}` : "none",
-                textAlign: "left", cursor: "pointer", fontFamily: "inherit",
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                fontSize: 13, color: C.text, transition: "background 0.1s",
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.bg2; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              {item.label}
-              <span style={{ fontSize: 16, color: C.faint, lineHeight: 1 }}>→</span>
+        {/* ── Tab bar ── */}
+        <div style={{ display: "flex", gap: 4, background: "#f1f5f9", borderRadius: 12, padding: 4, marginBottom: 28, width: "fit-content" }}>
+          {(["overview", "deals", "settings"] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)} style={tabStyle(t)}>
+              {t === "overview" ? "Overview" : t === "deals" ? `Deals${totalDeals > 0 ? ` (${totalDeals})` : ""}` : "Settings"}
             </button>
           ))}
         </div>
 
-        {/* Log out */}
-        {!showConfirm ? (
-          <button
-            onClick={() => setShowConfirm(true)}
-            style={{ width: "100%", padding: "13px", background: "transparent", color: C.muted, border: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; (e.currentTarget as HTMLElement).style.borderColor = C.red; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.muted; (e.currentTarget as HTMLElement).style.borderColor = C.rule; }}
-          >
-            Log Out
-          </button>
-        ) : (
-          <div style={{ border: `1px solid ${C.rule}`, padding: "16px 20px" }}>
-            <p style={{ fontSize: 13, color: C.text, marginBottom: 14 }}>Are you sure you want to log out?</p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={onLogOut}
-                style={{ flex: 1, padding: "10px", background: C.red, color: "#fff", border: "none", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-              >
-                Log Out
-              </button>
-              <button
-                onClick={() => setShowConfirm(false)}
-                style={{ flex: 1, padding: "10px", background: "transparent", color: C.muted, border: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                Cancel
-              </button>
+        {/* ══════════════════════════════════════════════════════════════════════
+            TAB: OVERVIEW
+        ══════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "overview" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+            {/* Stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+              {[
+                { label: "Deals Analyzed", value: totalDeals.toString(), sub: "total saved", color: "#2563eb" },
+                { label: "Average Score",  value: totalDeals > 0 ? avgScore.toString() : "—", sub: "out of 100", color: scoreColor(avgScore) },
+                { label: "Best Score",     value: totalDeals > 0 ? bestScore.toString() : "—", sub: sorted[0]?.address?.split(",")[0] ?? "no deals yet", color: scoreColor(bestScore) },
+                { label: "Est. Cash Flow", value: totalDeals > 0 ? (totalCF >= 0 ? "+" : "") + "$" + Math.abs(Math.round(totalCF)).toLocaleString() : "—", sub: "combined / mo", color: totalCF >= 0 ? "#059669" : "#dc2626" },
+              ].map(s => (
+                <div key={s.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+                  <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontWeight: 700 }}>{s.label}</p>
+                  <p style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.04em", color: s.color, fontVariantNumeric: "tabular-nums", lineHeight: 1, marginBottom: 5 }}>{s.value}</p>
+                  <p style={{ fontSize: 10, color: "#94a3b8" }}>{s.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Score trend chart */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "18px 20px", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", margin: "0 0 2px" }}>Deal Score Trend</p>
+                  <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>Last {Math.min(trendDeals.length, 10)} analyzed deals</p>
+                </div>
+                {totalDeals > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: avgScore >= 70 ? "#059669" : avgScore >= 45 ? "#d97706" : "#dc2626", background: avgScore >= 70 ? "#f0fdf4" : avgScore >= 45 ? "#fffbeb" : "#fff1f2", border: `1px solid ${avgScore >= 70 ? "#bbf7d0" : avgScore >= 45 ? "#fde68a" : "#fecdd3"}`, borderRadius: 999, padding: "3px 10px" }}>
+                    avg {avgScore}
+                  </span>
+                )}
+              </div>
+              <ScoreTrend />
+            </div>
+
+            {/* Insights */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", margin: 0 }}>Insights</p>
+              </div>
+              {insights.length > 0 ? insights.map((ins, i) => (
+                <div key={i} style={{ padding: "12px 20px", borderBottom: i < insights.length - 1 ? "1px solid #f8fafc" : "none", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{ins.icon}</span>
+                  <p style={{ fontSize: 12, color: "#334155", lineHeight: 1.6, margin: 0 }}>{ins.text}</p>
+                </div>
+              )) : (
+                <div style={{ padding: "20px", textAlign: "center" }}>
+                  <p style={{ fontSize: 12, color: "#94a3b8" }}>No insights yet — start analyzing deals.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Quick nav */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[
+                { label: "My Deals Dashboard", sub: `${totalDeals} saved`, page: "dashboard" as Page, icon: "📊" },
+                { label: "Analyze a Deal",      sub: "manual or CSV",        page: "analyzer" as Page,  icon: "✏️" },
+              ].map(item => (
+                <button key={item.page} onClick={() => onNavigate(item.page)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", transition: "all 0.18s", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "#2563eb"; el.style.transform = "translateY(-2px)"; el.style.boxShadow = "0 4px 14px rgba(37,99,235,0.12)"; }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "#e2e8f0"; el.style.transform = "none"; el.style.boxShadow = "0 1px 4px rgba(15,23,42,0.04)"; }}>
+                  <span style={{ fontSize: 20, display: "block", marginBottom: 8 }}>{item.icon}</span>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 2 }}>{item.label}</p>
+                  <p style={{ fontSize: 11, color: "#94a3b8" }}>{item.sub}</p>
+                </button>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Session info */}
-        {user.loginAt && (
-          <div style={{ marginTop: 16, padding: "10px 14px", background: C.bg2, border: `1px solid ${C.rule}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase" }}>Last sign-in</span>
-            <span style={{ fontSize: 11, color: C.muted, fontVariantNumeric: "tabular-nums" }}>
-              {new Date(user.loginAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-            </span>
+        {/* ══════════════════════════════════════════════════════════════════════
+            TAB: DEALS
+        ══════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "deals" && (
+          <div>
+            {myDeals.length === 0 ? (
+              <div style={{ background: "#fff", border: "1.5px dashed #e2e8f0", borderRadius: 16, padding: "48px 24px", textAlign: "center" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 8 }}>No deals saved yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 20, lineHeight: 1.6 }}>Analyze a property and click "Save Deal" to track it here.</p>
+                <button onClick={() => onNavigate("analyzer")} style={{ padding: "10px 24px", background: "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  Analyze Your First Deal
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>Sorted by score — highest first</p>
+                {sorted.map((deal, i) => {
+                  const sc = scoreColor(deal.score);
+                  return (
+                    <div key={deal.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+                      {/* Score badge */}
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: sc + "12", border: `1.5px solid ${sc}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 15, fontWeight: 900, color: sc, fontVariantNumeric: "tabular-nums" }}>{deal.score}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address}</p>
+                        <p style={{ fontSize: 11, color: "#64748b" }}>
+                          {fmt(deal.price)} · <span style={{ color: deal.cashflow >= 0 ? "#059669" : "#dc2626", fontWeight: 600 }}>{deal.cashflow >= 0 ? "+" : ""}${Math.round(deal.cashflow)}/mo</span> · {deal.capRate.toFixed(1)}% cap
+                        </p>
+                      </div>
+                      <span style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>#{i + 1}</span>
+                    </div>
+                  );
+                })}
+                <button onClick={() => onNavigate("dashboard")} style={{ marginTop: 8, padding: "12px", background: "transparent", border: "1px solid #e2e8f0", borderRadius: 12, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "inherit", transition: "all 0.18s" }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "#2563eb"; el.style.color = "#2563eb"; }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "#e2e8f0"; el.style.color = "#475569"; }}>
+                  Open Full Dashboard →
+                </button>
+              </div>
+            )}
           </div>
         )}
-        <p style={{ fontSize: 10, color: C.faint, marginTop: 16, textAlign: "center", lineHeight: 1.6 }}>
-          Your session persists across page refreshes. Account data is stored locally in this browser.
-        </p>
+
+        {/* ══════════════════════════════════════════════════════════════════════
+            TAB: SETTINGS
+        ══════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "settings" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* Default analysis settings */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 2px" }}>Default Analysis Settings</p>
+                <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>Pre-filled when you open the analyzer</p>
+              </div>
+              <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px 20px" }}>
+                {([
+                  { label: "Vacancy Rate", key: "vacancy" as const, suffix: "%", placeholder: "5" },
+                  { label: "Repairs %",    key: "repairs" as const, suffix: "% of rent", placeholder: "5" },
+                  { label: "Management %", key: "mgmt" as const,    suffix: "% of rent", placeholder: "8" },
+                  { label: "Interest Rate",key: "rate" as const,    suffix: "%",          placeholder: "7.25" },
+                ] as { label: string; key: keyof UserDefaults; suffix: string; placeholder: string }[]).map(f => (
+                  <div key={f.key}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{f.label}</label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="number" placeholder={f.placeholder} value={defaults[f.key]}
+                        onChange={e => setDefaults(d => ({ ...d, [f.key]: e.target.value }))}
+                        style={inp}
+                        onFocus={e => { e.currentTarget.style.borderColor = "#2563eb"; }}
+                        onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                      />
+                      <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#94a3b8", pointerEvents: "none" }}>{f.suffix}</span>
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Preferred State</label>
+                  <select value={defaults.state} onChange={e => setDefaults(d => ({ ...d, state: e.target.value }))}
+                    style={{ ...inp, cursor: "pointer" }}>
+                    <option value="">Any state</option>
+                    {US_STATES.map(s => <option key={s.abbr} value={s.abbr}>{s.abbr} — {s.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ padding: "0 20px 20px" }}>
+                <button onClick={() => saveDefaults(defaults)} style={{ padding: "10px 24px", background: defaultsSaved ? "#059669" : "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s", boxShadow: "0 2px 10px rgba(37,99,235,0.22)" }}>
+                  {defaultsSaved ? "✓ Saved" : "Save Defaults"}
+                </button>
+              </div>
+            </div>
+
+            {/* Account info */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>Account</p>
+              </div>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid #f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "#64748b" }}>Name</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>{user.name}</span>
+              </div>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid #f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "#64748b" }}>Email</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>{user.email}</span>
+              </div>
+              {user.loginAt && (
+                <div style={{ padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>Last sign-in</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8", fontVariantNumeric: "tabular-nums" }}>
+                    {new Date(user.loginAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Log out */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "20px", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              {!showConfirm ? (
+                <button onClick={() => setShowConfirm(true)} style={{ padding: "10px 20px", background: "transparent", color: "#dc2626", border: "1px solid #fecdd3", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = "#fff1f2"; }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = "transparent"; }}>
+                  Log Out
+                </button>
+              ) : (
+                <div>
+                  <p style={{ fontSize: 13, color: "#0f172a", marginBottom: 14 }}>Are you sure you want to log out?</p>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={onLogOut} style={{ padding: "10px 20px", background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Log Out</button>
+                    <button onClick={() => setShowConfirm(false)} style={{ padding: "10px 20px", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.6 }}>
+              Account data is stored locally in this browser.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6933,6 +7129,7 @@ function AccountPage({
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function Dealistic() {
   const [page, setPage] = useState<Page>("landing");
+  const [prevPage, setPrevPage] = useState<Page>("landing");
   const [authPage, setAuthPage] = useState<AuthPage | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -6997,7 +7194,7 @@ export default function Dealistic() {
   }, []);
 
 
-  const navigate = (p: Page) => { setPage(p); setAuthPage(null); setMenuOpen(false); window.scrollTo(0, 0); };
+  const navigate = (p: Page) => { setPrevPage(page); setPage(p); setAuthPage(null); setMenuOpen(false); window.scrollTo(0, 0); };
   const openAuth = (ap: AuthPage) => { setAuthPage(ap); setMenuOpen(false); window.scrollTo(0, 0); };
 
   function handleAuthSuccess(u: AuthUser) {
@@ -7460,7 +7657,13 @@ export default function Dealistic() {
         <SignUpPage onSuccess={handleAuthSuccess} onGoLogin={() => openAuth("login")} />
       )}
       {authPage === "account" && user && (
-        <AccountPage user={user} onLogOut={handleLogOut} onNavigate={navigate} />
+        <AccountPage
+          user={user}
+          onLogOut={handleLogOut}
+          onNavigate={navigate}
+          deals={deals}
+          onBack={() => { setAuthPage(null); setPage(prevPage); window.scrollTo(0, 0); }}
+        />
       )}
 
       {/* Main app pages */}
