@@ -4944,7 +4944,7 @@ function SafetyBadge({ zip, stateAbbr }: { zip: string; stateAbbr: string }) {
       display: "inline-flex", alignItems: "center", gap: 6,
       padding: "4px 10px", borderRadius: 99,
       background: s.bg, border: `1px solid ${s.border}`,
-      marginTop: 8,
+      flexShrink: 0, whiteSpace: "nowrap",
     }}>
       <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />
       <span style={{ fontSize: 11, fontWeight: 700, color: s.text }}>Safety: {s.label}</span>
@@ -5293,36 +5293,35 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
             {/* ── Form column — 3 cards ── */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-              {/* Address + State */}
-              <div className="az-card" style={{ padding: "16px 18px" }}>
+              {/* Address + State + ZIP + Safety — single row, wraps on mobile */}
+              <div className="az-card" style={{ padding: "14px 18px" }}>
                 <label className="az-label">Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span></label>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {/* Address — takes all remaining space */}
                   <input type="text" placeholder="123 Main St, Austin TX"
                     value={form.address} onChange={e => setField("address")(e.target.value)}
-                    className="az-input" style={{ flex: 1, minWidth: 0 }} />
+                    className="az-input" style={{ flex: "1 1 180px", minWidth: 0 }} />
+                  {/* State dropdown */}
                   <StateSelect
                     value={form.state}
                     onChange={v => setField("state")(v)}
                     width={90}
                   />
-                </div>
-                {/* ZIP + Safety row */}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-                  <div style={{ position: "relative", width: 100, flexShrink: 0 }}>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={5}
-                      placeholder="ZIP"
-                      value={form.zip ?? ""}
-                      onChange={e => {
-                        const v = e.target.value.replace(/\D/g, "").slice(0, 5);
-                        setField("zip")(v);
-                      }}
-                      className="az-input"
-                      style={{ width: "100%", textAlign: "center", letterSpacing: "0.06em" }}
-                    />
-                  </div>
+                  {/* ZIP */}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="ZIP"
+                    value={form.zip ?? ""}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 5);
+                      setField("zip")(v);
+                    }}
+                    className="az-input"
+                    style={{ width: 72, flexShrink: 0, textAlign: "center", letterSpacing: "0.06em" }}
+                  />
+                  {/* Safety badge — inline, only when there's something to show */}
                   <SafetyBadge zip={form.zip ?? ""} stateAbbr={form.state} />
                 </div>
                 <StateSummaryCard stateAbbr={form.state} />
@@ -7449,7 +7448,7 @@ function LogInPage({
       if (msg.includes("invalid login") || msg.includes("invalid credentials")) {
         setErrors({ password: "Incorrect password. Please try again." });
       } else if (msg.includes("user not found") || msg.includes("no user")) {
-        setErrors({ general: "No account found. Did you mean to sign up?" });
+        setErrors({ general: "Incorrect email or password. Please try again." });
       } else {
         setErrors({ general: error.message });
       }
@@ -7642,14 +7641,71 @@ interface UserDefaults {
 const DEFAULT_SETTINGS: UserDefaults = { vacancy: "5", repairs: "5", mgmt: "8", rate: "7.25", state: "" };
 
 function AccountPage({
-  user, onLogOut, onNavigate, onBack, deals: allDeals,
+  user, authLoading, onLogOut, onNavigate, onBack, deals: allDeals,
 }: {
-  user: AuthUser;
+  user: AuthUser | null;
+  authLoading: boolean;
   onLogOut: () => void;
   onNavigate: (p: Page) => void;
   onBack: () => void;
   deals: SavedDeal[];
 }) {
+  const F = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+
+  // ── State 1: Checking account (auth not yet resolved) ─────────────────────
+  if (authLoading) {
+    return (
+      <div style={{ background: "#f8fafc", minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: F, fontSize: 13, color: "#64748b", padding: 0, display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em" }}>Dealistic</span>
+            <div style={{ width: 52 }} />
+          </div>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
+          <div style={{ width: 28, height: 28, border: "2.5px solid #e2e8f0", borderTop: "2.5px solid #2563eb", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: F }}>Checking account…</p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // ── State 2: Not signed in (auth resolved, no user) ───────────────────────
+  if (!user) {
+    return (
+      <div style={{ background: "#f8fafc", minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: F, fontSize: 13, color: "#64748b", padding: 0, display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em" }}>Dealistic</span>
+            <div style={{ width: 52 }} />
+          </div>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: "40px 16px" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
+            👤
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.025em", margin: "0 0 8px", fontFamily: F }}>Not signed in</p>
+            <p style={{ fontSize: 13, color: "#64748b", margin: 0, fontFamily: F }}>Sign in to access your account and saved deals.</p>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <a href="/login" style={{ padding: "10px 22px", background: "linear-gradient(135deg,#2563eb,#0ea5e9)", color: "#fff", borderRadius: 10, fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: F, boxShadow: "0 4px 14px rgba(37,99,235,.25)" }}>
+              Log In
+            </a>
+            <a href="/signup" style={{ padding: "10px 22px", background: "#fff", color: "#0f172a", borderRadius: 10, fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: F, border: "1.5px solid #e2e8f0" }}>
+              Create Account
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── State 3: Signed in — full account page ────────────────────────────────
+  // (user is confirmed non-null from here down)
   const [showConfirm, setShowConfirm]   = useState(false);
   const [defaults, setDefaults]         = useState<UserDefaults>(() => lsGet<UserDefaults>(LS_DEFAULTS) ?? DEFAULT_SETTINGS);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
@@ -8036,6 +8092,7 @@ export default function Dealistic() {
   const [prevPage, setPrevPage] = useState<Page>("landing");
   const [authPage, setAuthPage] = useState<AuthPage | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true); // true until getUser() resolves
   const [menuOpen, setMenuOpen] = useState(false);
   const [deals, setDeals] = useState<SavedDeal[]>([]);
 
@@ -8058,6 +8115,7 @@ export default function Dealistic() {
         const myDeals = allDeals.filter(d => d.userEmail === authUser.email);
         if (myDeals.length > 0) setDeals(myDeals);
       }
+      setAuthLoading(false); // auth check complete — user is either set or null
     });
 
     // Listen for sign-in / sign-out events
@@ -8744,9 +8802,10 @@ export default function Dealistic() {
       {authPage === "signup" && (
         <SignUpPage onSuccess={handleAuthSuccess} onGoLogin={() => openAuth("login")} />
       )}
-      {authPage === "account" && user && (
+      {authPage === "account" && (
         <AccountPage
           user={user}
+          authLoading={authLoading}
           onLogOut={handleLogOut}
           onNavigate={navigate}
           deals={deals}

@@ -1,8 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-// Server client — reads/writes the auth session cookie.
-// Use in Server Components, Server Actions, and Route Handlers.
+// Server Supabase client — use in Server Components, Server Actions, Route Handlers.
+// Reads and writes the session cookie so sessions persist across requests.
 export async function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -10,7 +10,7 @@ export async function createClient() {
   if (!url || !key) {
     throw new Error(
       "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.\n" +
-      "Add them to .env.local (dev) or Vercel Environment Variables (prod)."
+      "Add them to .env.local (dev) or Vercel → Settings → Environment Variables (prod)."
     );
   }
 
@@ -27,9 +27,9 @@ export async function createClient() {
             cookieStore.set(name, value, options);
           });
         } catch {
-          // Called from a Server Component — cookie mutation is only allowed
-          // in middleware and Route Handlers. Safe to ignore here; middleware
-          // keeps the session token refreshed.
+          // Called from a Server Component — cookie writes are only allowed
+          // in middleware and Route Handlers. The middleware refreshes tokens
+          // automatically so this is safe to ignore.
         }
       },
     },
