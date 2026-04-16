@@ -1611,6 +1611,318 @@ function RentVsBuyCard({ d, r }: { d: DealInput; r: DealResult }) {
   );
 }
 
+// ─── MarketOutlookPanel ────────────────────────────────────────────────────────
+function MarketOutlookPanel({ data, address }: { data: MarketRow[]; address: string }) {
+  const [open, setOpen]         = useState(true);
+  const [searchQ, setSearchQ]   = useState(address.split(",")[0].trim() || "");
+
+  // Filter rows matching the address/state
+  const matches = data.filter(r =>
+    r.region_name.toLowerCase().includes(searchQ.toLowerCase()) ||
+    r.state_name.toLowerCase().includes(searchQ.toLowerCase())
+  ).slice(0, 40);
+
+  const topRow = matches[0] ?? null;
+  const medApp1 = matches.reduce((s, r) => s + (r.appreciation_1y_pct ?? 0), 0) / Math.max(matches.filter(r => r.appreciation_1y_pct !== null).length, 1);
+  const medApp5 = matches.reduce((s, r) => s + (r.appreciation_5y_pct ?? 0), 0) / Math.max(matches.filter(r => r.appreciation_5y_pct !== null).length, 1);
+
+  if (!open) {
+    return (
+      <div style={{ marginBottom: 24 }}>
+        <button onClick={() => setOpen(true)} style={{
+          width: "100%", padding: "12px 18px",
+          background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0",
+          borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          transition: "all 0.18s",
+        }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2563eb"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 16 }}>📊</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Market Outlook</span>
+            <span style={{ fontSize: 11, color: "#64748b" }}>{data.length.toLocaleString()} regions loaded</span>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#64748b", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>Market Outlook</span>
+          <div style={{ height: 1, background: "#e2e8f0", width: 32 }} />
+        </div>
+        <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 11, color: "#94a3b8", padding: 0 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}>
+          Hide ↑
+        </button>
+      </div>
+
+      {/* Search */}
+      <div style={{ position: "relative", marginBottom: 12 }}>
+        <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#94a3b8", pointerEvents: "none" }}>🔍</span>
+        <input
+          type="text"
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          placeholder="Filter by city, metro, or state…"
+          style={{
+            width: "100%", boxSizing: "border-box",
+            padding: "8px 12px 8px 30px",
+            border: "1.5px solid #e2e8f0", borderRadius: 10,
+            fontSize: 13, color: "#0f172a", fontFamily: "inherit",
+            background: "#fff", outline: "none",
+            transition: "border-color 0.18s",
+          }}
+          onFocus={e => { e.currentTarget.style.borderColor = "#2563eb"; }}
+          onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+        />
+      </div>
+
+      {/* Summary stat cards */}
+      {matches.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 12 }}>
+          {[
+            { label: "Regions Matched", value: matches.length.toLocaleString(), color: "#2563eb" },
+            { label: "Avg 1yr Appreciation", value: medApp1.toFixed(1) + "%", color: medApp1 >= 0 ? "#059669" : "#dc2626" },
+            { label: "Avg 5yr Appreciation", value: medApp5.toFixed(1) + "%", color: medApp5 >= 0 ? "#059669" : "#dc2626" },
+            ...(topRow?.latest_value ? [{ label: "Median Value", value: "$" + Math.round(topRow.latest_value / 1000) + "k", color: "#0f172a" }] : []),
+          ].map(s => (
+            <div key={s.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px" }}>
+              <p style={{ fontSize: 9, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>{s.label}</p>
+              <p style={{ fontSize: 16, fontWeight: 800, color: s.color, letterSpacing: "-0.03em", margin: 0, fontVariantNumeric: "tabular-nums" }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      {matches.length > 0 ? (
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto", maxHeight: 220, overflowY: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+                <tr>
+                  {["Region", "State", "Median Value", "1yr %", "5yr %"].map(h => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 9, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, borderBottom: "1px solid #e2e8f0" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matches.map((row, i) => {
+                  const c1 = row.appreciation_1y_pct !== null ? (row.appreciation_1y_pct >= 0 ? "#059669" : "#dc2626") : "#94a3b8";
+                  const c5 = row.appreciation_5y_pct !== null ? (row.appreciation_5y_pct >= 0 ? "#059669" : "#dc2626") : "#94a3b8";
+                  return (
+                    <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "7px 12px", fontWeight: 600, color: "#0f172a" }}>{row.region_name || "—"}</td>
+                      <td style={{ padding: "7px 12px", color: "#64748b" }}>{row.state_name || "—"}</td>
+                      <td style={{ padding: "7px 12px", color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>
+                        {row.latest_value !== null ? "$" + Math.round(row.latest_value / 1000) + "k" : "—"}
+                      </td>
+                      <td style={{ padding: "7px 12px", color: c1, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                        {row.appreciation_1y_pct !== null ? (row.appreciation_1y_pct >= 0 ? "+" : "") + row.appreciation_1y_pct + "%" : "—"}
+                      </td>
+                      <td style={{ padding: "7px 12px", color: c5, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                        {row.appreciation_5y_pct !== null ? (row.appreciation_5y_pct >= 0 ? "+" : "") + row.appreciation_5y_pct + "%" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", padding: "28px 0", color: "#94a3b8", fontSize: 12 }}>
+          No regions match "{searchQ}". Try a different city or state name.
+        </div>
+      )}
+
+      <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 10, lineHeight: 1.5 }}>
+        {data.length.toLocaleString()} total regions from your imported file · Appreciation = % change in median home value
+      </p>
+    </div>
+  );
+}
+
+// ─── DealScorePreview — premium ghost state shown before analysis ─────────────
+function ScoreRing({ score, color, size = 120 }: { score: number; color: string; size?: number }) {
+  const r = (size - 16) / 2;
+  const circ = 2 * Math.PI * r;
+  const filled = (score / 100) * circ;
+  const [animated, setAnimated] = useState(0);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      setTimeout(() => setAnimated(score), 60);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [score]);
+
+  const animFilled = (animated / 100) * circ;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
+      <defs>
+        <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={color} />
+          <stop offset="100%" stopColor={color === "#059669" ? "#10b981" : color === "#d97706" ? "#f59e0b" : "#ef4444"} />
+        </linearGradient>
+      </defs>
+      {/* Track */}
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={8} />
+      {/* Fill */}
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke="url(#ring-grad)" strokeWidth={8}
+        strokeDasharray={`${animFilled} ${circ - animFilled}`}
+        strokeDashoffset={circ / 4}
+        strokeLinecap="round"
+        style={{ transition: "stroke-dasharray 0.8s cubic-bezier(.22,1,.36,1)" }}
+      />
+      {/* Score text */}
+      <text x={size / 2} y={size / 2 - 6} textAnchor="middle" style={{ fontSize: 26, fontWeight: 900, fill: color, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums" }}>
+        {score}
+      </text>
+      <text x={size / 2} y={size / 2 + 12} textAnchor="middle" style={{ fontSize: 11, fill: "#94a3b8" }}>
+        / 100
+      </text>
+    </svg>
+  );
+}
+
+interface ScoreCategory {
+  key: string;
+  label: string;
+  weight: number;
+  score: number;
+  color: string;
+  tooltip: string;
+  icon: React.ReactNode;
+}
+
+function ScoreBar({ score, color, delay }: { score: number; color: string; delay: number }) {
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setW(score), delay);
+    return () => clearTimeout(t);
+  }, [score, delay]);
+  return (
+    <div style={{ height: 5, borderRadius: 99, background: "#f1f5f9", overflow: "hidden", flex: 1 }}>
+      <div style={{
+        height: "100%", borderRadius: 99,
+        width: w + "%",
+        background: `linear-gradient(90deg, ${color}, ${color}cc)`,
+        transition: "width 0.65s cubic-bezier(.22,1,.36,1)",
+      }} />
+    </div>
+  );
+}
+
+function DealScorePreview({ isBuyer }: { isBuyer: boolean }) {
+  // Ghost data — shown blurred before analysis runs
+  const ghostCats: ScoreCategory[] = [
+    { key: "cashflow",    label: "Cash Flow",    weight: 35, score: 72, color: "#059669", tooltip: "Monthly income after all expenses", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+    { key: "returns",     label: "Returns",      weight: 30, score: 81, color: "#2563eb", tooltip: "Cap rate, CoC return, and overall yield", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
+    { key: "coverage",    label: "Debt Coverage", weight: 20, score: 65, color: "#7c3aed", tooltip: "DSCR — does rent cover the mortgage and all expenses?", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> },
+    { key: "market",      label: "Market",       weight: 15, score: 58, color: "#ea580c", tooltip: "State-level factors: taxes, landlord laws, insurance risk", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> },
+  ];
+  const ghostScore = 74;
+  const ghostColor = "#059669";
+
+  if (isBuyer) {
+    return (
+      <div style={{
+        background: "rgba(255,255,255,0.9)", borderRadius: 20,
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 2px 12px rgba(15,23,42,0.06), 0 8px 32px rgba(15,23,42,0.04)",
+        padding: "28px 24px",
+      }}>
+        <div style={{ textAlign: "center", padding: "24px 0" }}>
+          <div style={{ fontSize: 32, marginBottom: 14, opacity: 0.3 }}>🏠</div>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "#475569", marginBottom: 8 }}>Cost breakdown will appear here</p>
+          <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>Fill in your purchase details and click Calculate.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: "linear-gradient(160deg, #ffffff 0%, #f8faff 100%)",
+      borderRadius: 20, border: "1px solid #e2e8f0",
+      boxShadow: "0 2px 12px rgba(15,23,42,0.06), 0 8px 32px rgba(15,23,42,0.04)",
+      overflow: "hidden", position: "relative",
+    }}>
+      {/* Blurred ghost content */}
+      <div style={{ filter: "blur(3.5px)", userSelect: "none", pointerEvents: "none", opacity: 0.55 }}>
+        {/* Header */}
+        <div style={{ padding: "24px 24px 0", textAlign: "center", marginBottom: 20 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 6 }}>Deal Score Breakdown</p>
+          <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5, margin: 0 }}>See how this deal is evaluated across key investment factors</p>
+        </div>
+
+        {/* Ring + label */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #f1f5f9" }}>
+          <ScoreRing score={ghostScore} color={ghostColor} size={120} />
+          <div style={{ marginTop: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 999, padding: "4px 14px" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>Strong Investment</span>
+          </div>
+        </div>
+
+        {/* Category rows */}
+        <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {ghostCats.map((cat, i) => (
+            <div key={cat.key}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <span style={{ color: cat.color, flexShrink: 0, display: "flex" }}>{cat.icon}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", flex: 1 }}>{cat.label}</span>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}>{cat.weight}%</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: cat.color, minWidth: 36, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cat.score}%</span>
+              </div>
+              <ScoreBar score={cat.score} color={cat.color} delay={i * 80} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Overlay CTA */}
+      <div style={{
+        position: "absolute", inset: 0,
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 40%, rgba(255,255,255,0.92) 100%)",
+        padding: "24px",
+      }}>
+        <div style={{
+          marginTop: "auto",
+          background: "rgba(255,255,255,0.98)", borderRadius: 16,
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 4px 20px rgba(15,23,42,0.1)",
+          padding: "20px 24px", textAlign: "center", maxWidth: 260,
+        }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg,#eff6ff,#f0fdf4)", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 20 }}>
+            📊
+          </div>
+          <p style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em", marginBottom: 6 }}>
+            Enter a property to generate your deal score
+          </p>
+          <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.55, margin: 0 }}>
+            Fill in purchase price, rent, and expenses — we'll score the deal across 4 key dimensions.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface InvestorDashboardProps {
   result: AnalysisResult;
   saved: boolean;
@@ -4015,6 +4327,103 @@ function autoMapHeaders(
   return { mapping, confidence };
 }
 
+
+// ─── Market dataset types + transformer ──────────────────────────────────────
+interface MarketRow {
+  region_id:           string;
+  region_name:         string;
+  region_type:         string;
+  state_name:          string;
+  latest_date:         string;
+  latest_value:        number | null;
+  value_12mo_ago:      number | null;
+  value_60mo_ago:      number | null;
+  appreciation_1y_pct: number | null;
+  appreciation_5y_pct: number | null;
+}
+
+function transformMarketDataset(headers: string[], rows: Record<string, string>[]): MarketRow[] {
+  // Identify date columns (e.g. "2000-01-31") and sort chronologically
+  const dateCols = headers
+    .filter(h => /^\d{4}[-/]\d{2}/.test(h.trim()))
+    .sort((a, b) => a.localeCompare(b));
+
+  if (dateCols.length === 0) return [];
+
+  const latestCol = dateCols[dateCols.length - 1];
+
+  // Find the col that is approximately 12 months prior
+  const latestDate = new Date(latestCol.trim());
+  const target12 = new Date(latestDate);
+  target12.setMonth(target12.getMonth() - 12);
+  const target60 = new Date(latestDate);
+  target60.setMonth(target60.getMonth() - 60);
+
+  function closestCol(target: Date): string | null {
+    let best: string | null = null;
+    let bestDiff = Infinity;
+    for (const col of dateCols) {
+      const d = new Date(col.trim());
+      const diff = Math.abs(d.getTime() - target.getTime());
+      if (diff < bestDiff) { bestDiff = diff; best = col; }
+    }
+    // Only use if within ±45 days
+    return best && bestDiff < 45 * 24 * 60 * 60 * 1000 ? best : null;
+  }
+
+  const col12 = closestCol(target12);
+  const col60 = closestCol(target60);
+
+  // Helper to find column by partial case-insensitive match
+  function findCol(names: string[]): string | null {
+    for (const name of names) {
+      const found = headers.find(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g,"") === name.replace(/[^a-z0-9]/g,""));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const regionIdCol    = findCol(["regionid", "region_id"]);
+  const regionNameCol  = findCol(["regionname", "region_name", "regiontype", "metro", "city", "county"]);
+  const regionTypeCol  = findCol(["regiontype", "region_type", "type"]);
+  const stateNameCol   = findCol(["statename", "state_name", "state"]);
+
+  function safeNum(s: string | undefined): number | null {
+    if (!s || s.trim() === "" || s.trim() === ".") return null;
+    const n = Number(s.replace(/[$,%]/g, "").trim());
+    return isNaN(n) ? null : n;
+  }
+
+  function pctChange(from: number | null, to: number | null): number | null {
+    if (from === null || to === null || from === 0) return null;
+    return Math.round(((to - from) / from) * 1000) / 10; // 1 decimal
+  }
+
+  return rows
+    .filter(row => {
+      const v = safeNum(row[latestCol]);
+      return v !== null && v > 0;
+    })
+    .map(row => {
+      const latest   = safeNum(row[latestCol]);
+      const ago12    = col12 ? safeNum(row[col12]) : null;
+      const ago60    = col60 ? safeNum(row[col60]) : null;
+      return {
+        region_id:           regionIdCol   ? (row[regionIdCol]   ?? "") : "",
+        region_name:         regionNameCol ? (row[regionNameCol] ?? "") : "",
+        region_type:         regionTypeCol ? (row[regionTypeCol] ?? "") : "",
+        state_name:          stateNameCol  ? (row[stateNameCol]  ?? "") : "",
+        latest_date:         latestCol.trim(),
+        latest_value:        latest,
+        value_12mo_ago:      ago12,
+        value_60mo_ago:      ago60,
+        appreciation_1y_pct: pctChange(ago12, latest),
+        appreciation_5y_pct: pctChange(ago60, latest),
+      };
+    })
+    .slice(0, 500); // cap for performance
+}
+
 function parseCsvText(text: string): CsvParsed | { error: string } {
   // Handle both CRLF and LF
   const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -4124,9 +4533,10 @@ interface CsvMappingUIProps {
   setCsvMapping: React.Dispatch<React.SetStateAction<Record<string, CsvField>>>;
   onNext: () => void;
   onCancel: () => void;
+  onImportMarket?: (rows: MarketRow[]) => void;
 }
 
-function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel }: CsvMappingUIProps) {
+function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel, onImportMarket }: CsvMappingUIProps) {
   const [showOptional, setShowOptional] = useState(false);
   const hasPriceMapping = Object.values(csvMapping).includes("purchase_price");
 
@@ -4234,82 +4644,119 @@ function CsvMappingUI({ csvParsed, csvMapping, setCsvMapping, onNext, onCancel }
     );
   }
 
-  // ── Market dataset BLOCKER — shown instead of mapping UI ──
+  // ── Market dataset — transform + premium UI ──────────────────────────────────
   if (safeDataset.isMarketDataset) {
+    const transformed = transformMarketDataset(csvParsed.headers, csvParsed.rows);
+    const sampleRows  = transformed.slice(0, 8);
+    const dateColCount = safeDataset.dateColCount;
+
     return (
       <div>
-        <div style={{ padding: "20px 24px", background: "#fdf5e8", border: "1px solid #e8c87a", marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
-            <span style={{ fontSize: 9, background: C.amber, color: "#fff", padding: "3px 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0, marginTop: 2 }}>Wrong Format</span>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "#6a4000", marginBottom: 6 }}>
-                This appears to be a market dataset (e.g. Zillow), not a property deal file.
-              </p>
-              <p style={{ fontSize: 12, color: "#9a7020", lineHeight: 1.65 }}>
-                Dealistic expects one row per property with fields like purchase price, rent, and loan details.
-                This file looks like a time-series or geographic dataset.
-              </p>
-            </div>
+        {/* ── Success banner ── */}
+        <div style={{
+          background: "linear-gradient(135deg,#f0fdf4,#eff6ff)",
+          border: "1px solid #bbf7d0", borderRadius: 18,
+          padding: "18px 22px", marginBottom: 20,
+          display: "flex", alignItems: "flex-start", gap: 14,
+        }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#2563eb,#059669)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: 18 }}>📈</span>
           </div>
-          {safeDataset.marketSignals.length > 0 && (
-            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e8c87a" }}>
-              <p style={{ fontSize: 10, color: "#9a7020", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontWeight: 600 }}>Why we flagged it</p>
-              {safeDataset.marketSignals.map(s => (
-                <p key={s} style={{ fontSize: 11, color: "#7a5500", marginBottom: 4, paddingLeft: 12, borderLeft: "2px solid #e8c87a" }}>{s}</p>
-              ))}
-            </div>
-          )}
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4, letterSpacing: "-0.015em" }}>
+              Market dataset detected.
+            </p>
+            <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.6, margin: 0 }}>
+              We converted this file into market trend insights for Dealistic.
+              {dateColCount > 0 && ` Found ${dateColCount} time-series columns across ${transformed.length.toLocaleString()} regions.`}
+            </p>
+          </div>
         </div>
 
-        {/* Column preview table */}
-        <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 10, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-            Your file's columns ({csvParsed.headers.length} total)
-          </p>
-          <div style={{ overflowX: "auto", border: `1px solid ${C.rule}` }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-              <thead>
-                <tr style={{ background: C.bg2, borderBottom: `1px solid ${C.rule}` }}>
-                  <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Column</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Type</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 9, color: C.faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Sample</th>
-                </tr>
-              </thead>
-              <tbody>
-                {csvParsed.headers.slice(0, 12).map(h => {
-                  const sample = csvParsed.rows.slice(0, 2).map(r => r[h]).filter(Boolean).join(", ");
-                  const noise = isNoiseColumn(h);
-                  return (
-                    <tr key={h} style={{ borderBottom: `1px solid ${C.rule}`, opacity: noise ? 0.5 : 1 }}>
-                      <td style={{ padding: "8px 12px", color: C.text, fontWeight: 500 }}>{h}{noise ? " ✕" : ""}</td>
-                      <td style={{ padding: "8px 12px", color: C.faint }}>{csvParsed.colTypes[h]}</td>
-                      <td style={{ padding: "8px 12px", color: C.faint, fontStyle: "italic", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sample || "—"}</td>
-                    </tr>
-                  );
-                })}
-                {csvParsed.headers.length > 12 && (
-                  <tr>
-                    <td colSpan={3} style={{ padding: "8px 12px", color: C.faint, fontStyle: "italic", textAlign: "center" }}>
-                      + {csvParsed.headers.length - 12} more columns
-                    </td>
+        {/* ── Stats row ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 20 }}>
+          {[
+            { label: "Regions", value: transformed.length.toLocaleString() },
+            { label: "Latest Date", value: transformed[0]?.latest_date?.slice(0, 7) ?? "—" },
+            { label: "With 1yr Data", value: transformed.filter(r => r.appreciation_1y_pct !== null).length.toLocaleString() },
+            { label: "With 5yr Data", value: transformed.filter(r => r.appreciation_5y_pct !== null).length.toLocaleString() },
+          ].map(s => (
+            <div key={s.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px" }}>
+              <p style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{s.label}</p>
+              <p style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: 0 }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Preview table ── */}
+        {sampleRows.length > 0 && (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", marginBottom: 20 }}>
+            <div style={{ padding: "10px 16px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Preview — first {sampleRows.length} rows
+              </span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc" }}>
+                    {["Region", "State", "Type", "Latest Value", "1yr %", "5yr %"].map(h => (
+                      <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 9, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>{h}</th>
+                    ))}
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {sampleRows.map((row, i) => {
+                    const is1Pos = row.appreciation_1y_pct !== null && row.appreciation_1y_pct >= 0;
+                    const is5Pos = row.appreciation_5y_pct !== null && row.appreciation_5y_pct >= 0;
+                    return (
+                      <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "9px 12px", fontWeight: 600, color: "#0f172a" }}>{row.region_name || "—"}</td>
+                        <td style={{ padding: "9px 12px", color: "#475569" }}>{row.state_name || "—"}</td>
+                        <td style={{ padding: "9px 12px", color: "#94a3b8" }}>{row.region_type || "—"}</td>
+                        <td style={{ padding: "9px 12px", color: "#0f172a", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                          {row.latest_value !== null ? "$" + Math.round(row.latest_value).toLocaleString() : "—"}
+                        </td>
+                        <td style={{ padding: "9px 12px", color: row.appreciation_1y_pct === null ? "#94a3b8" : is1Pos ? "#059669" : "#dc2626", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                          {row.appreciation_1y_pct !== null ? (is1Pos ? "+" : "") + row.appreciation_1y_pct + "%" : "—"}
+                        </td>
+                        <td style={{ padding: "9px 12px", color: row.appreciation_5y_pct === null ? "#94a3b8" : is5Pos ? "#059669" : "#dc2626", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                          {row.appreciation_5y_pct !== null ? (is5Pos ? "+" : "") + row.appreciation_5y_pct + "%" : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
-        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.65 }}>
-          <strong style={{ color: C.text }}>What Dealistic needs:</strong> a CSV with one row per property — columns like <code style={{ fontSize: 11, background: C.bg2, padding: "1px 5px" }}>purchase_price</code>, <code style={{ fontSize: 11, background: C.bg2, padding: "1px 5px" }}>monthly_rent</code>, <code style={{ fontSize: 11, background: C.bg2, padding: "1px 5px" }}>address</code>.
-          Download the template below to see the expected format.
-        </p>
-
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={onCancel}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
+        {/* ── Actions ── */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => {
+              if (onImportMarket) onImportMarket(transformed);
+            }}
+            style={{
+              flex: 1, minWidth: 160, padding: "13px",
+              background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+              color: "#fff", border: "none", borderRadius: 12,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              fontFamily: "inherit", boxShadow: "0 4px 14px rgba(37,99,235,0.28)",
+              transition: "opacity 0.18s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.88"; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            style={{ flex: 1, padding: "13px", background: C.text, color: C.bg, border: "none", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.12s" }}>
-            Upload a Different File
+          >
+            Import Market Insights →
+          </button>
+          <button onClick={onCancel}
+            style={{ padding: "13px 20px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "inherit", transition: "border-color 0.15s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#94a3b8"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; }}
+          >
+            Upload Different File
           </button>
         </div>
       </div>
@@ -4645,6 +5092,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRentEstimate, setShowRentEstimate] = useState(false);
   const [autoTax, setAutoTax] = useState(true); // true = use state estimate, false = manual
+  const [marketData, setMarketData] = useState<MarketRow[]>([]);
   const [showComps, setShowComps] = useState(false);
   const [showRentometer, setShowRentometer] = useState(false);
   const [csvError, setCsvError] = useState("");
@@ -4812,7 +5260,7 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
       if ("error" in result) { setCsvError(result.error); return; }
       setCsvParsed(result);
       setCsvMapping(result.mapping);
-      // Market datasets always show the blocker — never skip to preview
+      // Market datasets show the premium transform UI (map step)
       if (result.dataset.isMarketDataset) {
         setCsvStep("map");
         return;
@@ -4980,294 +5428,215 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
         {mode === "manual" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 560px), 1fr))", gap: "clamp(16px,2.5vw,32px)", alignItems: "start" }}>
 
-            {/* Form column */}
-            <div>
-              {/* ── Single unified form card ── */}
-              <div className="az-card">
+            {/* ── Form column — 3 cards ── */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-                {/* Address + State row — full width */}
-                <div style={{ marginBottom: 14 }}>
-                  <label className="az-label">Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span></label>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      type="text"
-                      placeholder="123 Main St, Austin TX"
-                      value={form.address}
-                      onChange={e => setField("address")(e.target.value)}
-                      className="az-input"
-                      style={{ flex: 1, minWidth: 0 }}
-                    />
-                    <select
-                      value={form.state}
-                      onChange={e => setField("state")(e.target.value)}
-                      className="az-select"
-                      style={{ width: 90, flexShrink: 0 }}
-                    >
-                      <option value="">State</option>
-                      {US_STATES.map(s => (
-                        <option key={s.abbr} value={s.abbr}>{s.abbr}</option>
-                      ))}
-                    </select>
-                  </div>
+              {/* Address + State */}
+              <div className="az-card" style={{ padding: "16px 18px" }}>
+                <label className="az-label">Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span></label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="text" placeholder="123 Main St, Austin TX"
+                    value={form.address} onChange={e => setField("address")(e.target.value)}
+                    className="az-input" style={{ flex: 1, minWidth: 0 }} />
+                  <select value={form.state} onChange={e => setField("state")(e.target.value)}
+                    className="az-select" style={{ width: 90, flexShrink: 0 }}>
+                    <option value="">State</option>
+                    {US_STATES.map(s => <option key={s.abbr} value={s.abbr}>{s.abbr}</option>)}
+                  </select>
                 </div>
-
-                {/* State summary card */}
                 <StateSummaryCard stateAbbr={form.state} />
+              </div>
 
-                {/* Thin rule */}
-                <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0 16px" }} />
+              {/* ── 2-col layout: Financing left, Income+Expenses right ── */}
+              <style>{`
+                .form-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+                @media (max-width: 520px) { .form-two-col { grid-template-columns: 1fr; } }
+                .exp-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+                @media (max-width: 420px) { .exp-two-col { grid-template-columns: 1fr; } }
+              `}</style>
+              <div className="form-two-col">
 
-                {/* 2-column grid: Financing (left) + Income & Expenses (right) */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: "20px 20px" }}>
-
-                  {/* ── Left: Financing ── */}
+                {/* ── LEFT: Financing ── */}
+                <div className="az-card" style={{ padding: "16px 18px" }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Financing
+                  </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Financing</p>
 
                     {/* Purchase Price */}
                     <div>
                       <label className="az-label">Purchase Price</label>
                       <div style={{ position: "relative" }}>
                         <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: C.faint, pointerEvents: "none" }}>$</span>
-                        <input
-                          ref={priceInputRef}
-                          type="number"
-                          placeholder="325,000"
-                          value={form.price}
-                          onChange={e => setField("price")(e.target.value)}
+                        <input ref={priceInputRef} type="number" placeholder="325,000"
+                          value={form.price} onChange={e => setField("price")(e.target.value)}
                           className="az-input az-input-prefix"
-                          style={{ border: highlightFields.has("price") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("price") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
-                        />
+                          style={{ border: highlightFields.has("price") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("price") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }} />
                       </div>
                     </div>
 
-                    <SmartField
-                      label="Down Payment" placeholder="65,000" prefix="$"
+                    <SmartField label="Down Payment" placeholder="65,000" prefix="$"
                       value={form.down} onChange={setField("down")}
-                      tooltip="Usually 20–25% of purchase price for rentals"
-                    />
-                    <SmartField
-                      label="Interest Rate" placeholder="7.25" suffix="%"
+                      tooltip="Usually 20–25% of purchase price for rentals" />
+                    <SmartField label="Interest Rate" placeholder="7.25" suffix="%"
                       value={form.rate} onChange={setField("rate")}
-                      tooltip="Check Bankrate.com for today's investment rates"
-                    />
-                    <SmartField
-                      label="Loan Term (yrs)" placeholder="30"
+                      tooltip="Check Bankrate.com for today's investment rates" />
+                    <SmartField label="Loan Term (yrs)" placeholder="30"
                       value={form.term} onChange={setField("term")}
-                      tooltip="30 years is standard. 15 years = higher payments, less total interest"
-                    />
+                      tooltip="30 years is standard. 15 years = higher payments, less total interest" />
                   </div>
+                </div>
 
-                  {/* ── Right: Income + Expenses ── */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* ── RIGHT: Income + Expenses stacked ── */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-                    {/* Income section */}
-                    {!isBuyer && (
-                      <>
-                        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Income</p>
-
+                  {/* Income card */}
+                  {!isBuyer && (
+                    <div className="az-card" style={{ padding: "16px 18px" }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        Income
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         {/* Monthly Rent */}
                         <div>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                             <label className="az-label" style={{ margin: 0 }}>Monthly Rent <span style={{ color: "#94a3b8", fontWeight: 400 }}>(opt.)</span></label>
                             {priceVal > 0 && (
-                              <button onClick={() => setShowRentEstimate(v => !v)} className="az-btn-ghost" style={{ fontSize: 9, padding: "2px 8px" }}>
+                              <button onClick={() => setShowRentEstimate(v => !v)} className="az-btn-ghost" style={{ fontSize: 9, padding: "2px 7px" }}>
                                 {showRentEstimate ? "Hide" : "Estimate"}
                               </button>
                             )}
                           </div>
                           <div style={{ position: "relative" }}>
                             <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: C.faint, pointerEvents: "none" }}>$</span>
-                            <input
-                              ref={rentInputRef}
-                              type="number"
-                              placeholder="2,400"
-                              value={form.rent}
-                              onChange={e => setField("rent")(e.target.value)}
+                            <input ref={rentInputRef} type="number" placeholder="2,400"
+                              value={form.rent} onChange={e => setField("rent")(e.target.value)}
                               className="az-input az-input-prefix"
-                              style={{ border: highlightFields.has("rent") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("rent") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }}
-                            />
+                              style={{ border: highlightFields.has("rent") ? "1.5px solid #2563eb" : undefined, boxShadow: highlightFields.has("rent") ? "0 0 0 3px rgba(37,99,235,0.14)" : undefined }} />
                           </div>
-                          {showRentEstimate && priceVal > 0 && (
-                            <RentEstimatorPanel price={priceVal} onSelect={handleRentEstimate} />
-                          )}
+                          {showRentEstimate && priceVal > 0 && <RentEstimatorPanel price={priceVal} onSelect={handleRentEstimate} />}
                         </div>
-
-                        <SmartField
-                          label="Vacancy Rate" placeholder="5" suffix="%"
+                        <SmartField label="Vacancy Rate" placeholder="5" suffix="%"
                           value={form.vacancy} onChange={setField("vacancy")}
-                          autoLabel="5%"
-                          tooltip="5–8% is typical for most rental markets"
-                        />
+                          autoLabel="5%" tooltip="5–8% is typical for most rental markets" />
 
-                        {/* Thin rule between Income and Expenses */}
-                        <div style={{ height: 1, background: "#f1f5f9", margin: "2px 0" }} />
-                      </>
-                    )}
-
-                    {/* Expenses section */}
-                    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 4px" }}>Expenses</p>
-
-                    {/* ── Property Taxes — smart toggle ── */}
-                    {(() => {
-                      const price = pf(form.price);
-                      const stateAbbr = form.state;
-                      const est = price > 0 ? estimateMonthlyTax(price, stateAbbr) : null;
-                      const estVal = est ? est.monthly : 0;
-                      const hasManual = form.taxes !== "" && form.taxes !== "0";
-
-                      return (
-                        <div>
-                          {/* Label row with toggle */}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <label className="az-label" style={{ margin: 0 }}>Property Taxes</label>
-                              {/* ? tooltip */}
-                              <div style={{ position: "relative", display: "inline-flex" }}>
-                                <span
-                                  title="Property taxes vary by county and local jurisdiction. This estimate is based on the state average effective rate and is meant to provide a realistic starting point — check your county assessor for the exact amount."
-                                  style={{ width: 15, height: 15, borderRadius: "50%", border: "1px solid #e2e8f0", background: "#f8fafc", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#64748b", cursor: "default" }}>?</span>
-                              </div>
-                            </div>
-
-                            {/* Auto/Manual toggle pill */}
-                            <button
-                              onClick={() => {
-                                const next = !autoTax;
-                                setAutoTax(next);
-                                if (next) {
-                                  // switching TO auto — clear manual if user wants estimate
-                                  // keep their value if they typed something (don't wipe)
-                                }
-                              }}
-                              style={{
-                                display: "flex", alignItems: "center", gap: 5,
-                                background: autoTax ? "rgba(37,99,235,0.08)" : "#f1f5f9",
-                                border: `1px solid ${autoTax ? "rgba(37,99,235,0.25)" : "#e2e8f0"}`,
-                                borderRadius: 99, padding: "2px 8px 2px 4px",
-                                cursor: "pointer", fontFamily: "inherit", transition: "all 0.18s",
-                              }}
-                            >
-                              {/* Toggle dot */}
-                              <span style={{
-                                width: 14, height: 14, borderRadius: "50%",
-                                background: autoTax ? "#2563eb" : "#94a3b8",
-                                display: "block", flexShrink: 0, transition: "background 0.18s",
-                              }} />
-                              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: autoTax ? "#2563eb" : "#64748b", transition: "color 0.18s" }}>
-                                {autoTax ? "Auto" : "Manual"}
-                              </span>
-                            </button>
-                          </div>
-
-                          {/* Input */}
-                          <div style={{ position: "relative" }}>
-                            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#94a3b8", pointerEvents: "none", zIndex: 1 }}>$</span>
-                            <input
-                              type="number"
-                              placeholder={autoTax && estVal > 0 ? String(estVal) : "350"}
-                              value={form.taxes}
-                              onChange={e => {
-                                setField("taxes")(e.target.value);
-                                if (e.target.value) setAutoTax(false); // typing → switch to manual
-                              }}
-                              className="az-input az-input-prefix"
-                              style={{
-                                borderColor: autoTax && !hasManual ? "rgba(37,99,235,0.3)" : undefined,
-                                background: autoTax && !hasManual ? "rgba(37,99,235,0.03)" : undefined,
-                              }}
-                            />
-                          </div>
-
-                          {/* Status line */}
-                          <div style={{ marginTop: 3, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <p style={{ fontSize: 10, color: autoTax && !hasManual ? "#2563eb" : "#94a3b8", margin: 0, fontStyle: autoTax && !hasManual ? "normal" : "normal" }}>
-                              {autoTax && !hasManual && estVal > 0
-                                ? `Estimated from ${est!.label} · $${estVal}/mo`
-                                : autoTax && !hasManual && !estVal
-                                ? "Select a state to auto-estimate"
-                                : "Manual override active"}
-                            </p>
-                            {!autoTax && (
-                              <button
-                                onClick={() => { setAutoTax(true); setField("taxes")(""); }}
-                                style={{ fontSize: 9, color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0, letterSpacing: "0.03em" }}
-                              >
-                                Reset to estimate
-                              </button>
-                            )}
-                          </div>
+                        {/* Rental tools */}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
+                          <button onClick={() => setShowComps(v => !v)} className="az-btn-ghost" style={{ fontSize: 10 }}>
+                            {showComps ? "Hide Comps" : "Rental Comps"}
+                          </button>
+                          <button onClick={() => setShowRentometer(v => !v)} className="az-btn-ghost" style={{ fontSize: 10 }}>
+                            {showRentometer ? "Hide" : "Rentometer"}
+                          </button>
                         </div>
-                      );
-                    })()}
-                    <SmartField
-                      label="Insurance" placeholder="120" prefix="$"
-                      value={form.insurance} onChange={setField("insurance")}
-                      autoLabel="Auto"
-                      tooltip="We estimate ~0.65% of price/year if left blank"
-                    />
-                    <SmartField
-                      label="HOA Fees" placeholder="0" prefix="$"
-                      value={form.hoa} onChange={setField("hoa")}
-                      tooltip="Listed in the MLS or ask the seller's agent. Enter 0 if none."
-                    />
-                    {!isBuyer && (
-                      <>
-                        <SmartField
-                          label="Repairs & Maint." placeholder="150" prefix="$"
-                          value={form.repairs} onChange={setField("repairs")}
-                          autoLabel="5%"
-                          tooltip="Rule of thumb: ~5% of monthly rent"
-                        />
-                        <SmartField
-                          label="Property Mgmt." placeholder="200" prefix="$"
-                          value={form.mgmt} onChange={setField("mgmt")}
-                          autoLabel="8%"
-                          tooltip="Typically 8–10% of monthly rent. Enter 0 if self-managing."
-                        />
-                      </>
-                    )}
-                    <SmartField
-                      label="Other Costs" placeholder="50" prefix="$"
-                      value={form.other} onChange={setField("other")}
-                      tooltip={isBuyer ? "HOA, lawn care, utilities you pay as owner" : "Utilities, lawn, pest control you pay as landlord"}
-                    />
+                        {showComps && <RentalCompsSection onUseAverage={handleUseAverage} />}
+                        {showRentometer && <RentometerSection address={form.address} />}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expenses card */}
+                  <div className="az-card" style={{ padding: "16px 18px" }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94a3b8", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                      Expenses
+                    </p>
+
+                    {/* ── 2-col expense grid ── */}
+                    <div className="exp-two-col">
+
+                      {/* Left expense column */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {/* Property Taxes — smart toggle */}
+                        {(() => {
+                          const price = pf(form.price);
+                          const est = price > 0 ? estimateMonthlyTax(price, form.state) : null;
+                          const estVal = est ? est.monthly : 0;
+                          const hasManual = form.taxes !== "" && form.taxes !== "0";
+                          return (
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <label className="az-label" style={{ margin: 0 }}>Taxes</label>
+                                  <span title="Property taxes vary by county. This estimate uses the state average effective rate." style={{ width: 13, height: 13, borderRadius: "50%", border: "1px solid #e2e8f0", background: "#f8fafc", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#64748b", cursor: "default" }}>?</span>
+                                </div>
+                                <button onClick={() => { setAutoTax(!autoTax); }}
+                                  style={{ display: "flex", alignItems: "center", gap: 3, background: autoTax ? "rgba(37,99,235,0.07)" : "#f1f5f9", border: `1px solid ${autoTax ? "rgba(37,99,235,0.2)" : "#e2e8f0"}`, borderRadius: 99, padding: "1px 6px 1px 3px", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: autoTax ? "#2563eb" : "#94a3b8", display: "block", flexShrink: 0, transition: "background 0.15s" }} />
+                                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: autoTax ? "#2563eb" : "#64748b" }}>{autoTax ? "Auto" : "Manual"}</span>
+                                </button>
+                              </div>
+                              <div style={{ position: "relative" }}>
+                                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#94a3b8", pointerEvents: "none", zIndex: 1 }}>$</span>
+                                <input type="number" placeholder={autoTax && estVal > 0 ? String(estVal) : "350"} value={form.taxes}
+                                  onChange={e => { setField("taxes")(e.target.value); if (e.target.value) setAutoTax(false); }}
+                                  className="az-input az-input-prefix"
+                                  style={{ borderColor: autoTax && !hasManual ? "rgba(37,99,235,0.25)" : undefined, background: autoTax && !hasManual ? "rgba(37,99,235,0.025)" : undefined }} />
+                              </div>
+                              {(autoTax && !hasManual) && (
+                                <p style={{ fontSize: 9, color: "#2563eb", margin: "2px 0 0" }}>
+                                  {estVal > 0 ? `~$${estVal}/mo · ${est!.label}` : "Select state to estimate"}
+                                </p>
+                              )}
+                              {!autoTax && (
+                                <button onClick={() => { setAutoTax(true); setField("taxes")(""); }} style={{ fontSize: 9, color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "1px 0 0", letterSpacing: "0.02em" }}>
+                                  Reset to estimate
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        <SmartField label="HOA Fees" placeholder="0" prefix="$"
+                          value={form.hoa} onChange={setField("hoa")}
+                          tooltip="Listed in the MLS or ask the seller's agent. Enter 0 if none." />
+                        <SmartField label="Other Costs" placeholder="50" prefix="$"
+                          value={form.other} onChange={setField("other")}
+                          tooltip={isBuyer ? "Lawn care, utilities you pay as owner" : "Utilities, lawn, pest control as landlord"} />
+                      </div>
+
+                      {/* Right expense column */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <SmartField label="Insurance" placeholder="120" prefix="$"
+                          value={form.insurance} onChange={setField("insurance")}
+                          autoLabel="Auto" tooltip="We estimate ~0.65% of price/year if left blank" />
+                        {!isBuyer && (
+                          <>
+                            <SmartField label="Repairs & Maint." placeholder="150" prefix="$"
+                              value={form.repairs} onChange={setField("repairs")}
+                              autoLabel="5%" tooltip="Rule of thumb: ~5% of monthly rent" />
+                            <SmartField label="Property Mgmt." placeholder="200" prefix="$"
+                              value={form.mgmt} onChange={setField("mgmt")}
+                              autoLabel="8%" tooltip="Typically 8–10% of monthly rent. Enter 0 if self-managing." />
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 10, margin: "10px 0 0" }}>
+                      Smart defaults apply to blank fields
+                    </p>
                   </div>
+
                 </div>
-
-                {/* Rental tools — below the grid */}
-                {!isBuyer && (
-                  <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
-                    <button onClick={() => setShowComps(v => !v)} className="az-btn-ghost">
-                      {showComps ? "Hide Comps" : "Rental Comps"}
-                    </button>
-                    <button onClick={() => setShowRentometer(v => !v)} className="az-btn-ghost">
-                      {showRentometer ? "Hide Rentometer" : "Rentometer"}
-                    </button>
-                    <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }}>Smart defaults apply to blank fields</span>
-                  </div>
-                )}
-                {showComps && <div style={{ marginTop: 12 }}><RentalCompsSection onUseAverage={handleUseAverage} /></div>}
-                {showRentometer && <div style={{ marginTop: 12 }}><RentometerSection address={form.address} /></div>}
-
-                <button onClick={analyze} className="az-btn-primary">
-                  {isBuyer ? "Calculate My Costs" : "Analyze This Deal"}
-                </button>
               </div>
+
+              {/* Analyze button — full width below both columns */}
+              <button onClick={analyze} className="az-btn-primary" style={{ marginTop: 0 }}>
+                {isBuyer ? "Calculate My Costs" : "Analyze This Deal"}
+              </button>
             </div>
 
             {/* Results column — sticky on desktop */}
             <div style={{ position: "sticky", top: 72, alignSelf: "start" }}>
+              {/* Market Outlook — shown when market CSV has been imported */}
+              {marketData.length > 0 && (
+                <MarketOutlookPanel data={marketData} address={form.address} />
+              )}
               {!result ? (
-                <div className="az-empty-state">
-                  <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.25 }}>📊</div>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 8 }}>
-                    {isBuyer ? "Your cost breakdown will appear here" : "Your deal analysis will appear here"}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
-                    {isBuyer ? "Fill in your purchase details and click Calculate." : "Enter the property details and click Analyze This Deal."}
-                  </p>
-                </div>
+                <DealScorePreview isBuyer={isBuyer} />
               ) : isBuyer ? (
 
                 /* ── HOME BUYER RESULTS ── */
@@ -5385,6 +5754,11 @@ function AnalyzerPage({ onSave, prefill, user, onOpenLogin }: { onSave: (d: Save
                 setCsvMapping={setCsvMapping}
                 onNext={() => { setCsvStep("preview"); setCsvError(""); }}
                 onCancel={resetCsv}
+                onImportMarket={(rows) => {
+                  setMarketData(rows);
+                  setMode("manual");
+                  resetCsv();
+                }}
               />
             )}
 
